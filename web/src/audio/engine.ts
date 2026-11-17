@@ -9,7 +9,7 @@ import { store } from "../core/util.ts";
 
 export type Mood = "lobby" | "question" | "celebrate";
 /** start/end (Sekunden) schneiden einen Ausschnitt aus, z. B. den Höhepunkt einer längeren Fanfare */
-export interface Track { file: string; title: string; author: string; url?: string; start?: number; end?: number; }
+export interface Track { file: string; title: string; author: string; url?: string; start?: number; end?: number; /** Sieger-Song: Ende des Intros in Sekunden (für „Nach Intro ausblenden“) */ introEnd?: number; }
 type Kind = Mood | "tada" | "winner";
 type TrackList = Partial<Record<Kind, Track[]>> & { themes?: Record<string, Partial<Record<Kind, Track[]>>> };
 
@@ -217,12 +217,16 @@ export class AudioEngine {
 	hasSting(kind: "tada" | "winner") { return !!this.tracks && this.listFor(kind).length > 0; }
 	/** Laufenden Tusch/Sieger-Song ausblenden (z. B. beim Weiterklicken) */
 	stopSting(fade = 1.2) { if (this.sting && !this.sting.audio.paused) this.sting.fadeOut(fade); }
+	/** Zuletzt gestarteter Tusch/Sieger-Song und seine Position (Sekunden ab Ausschnittbeginn) */
+	stingTrack: Track | null = null;
+	stingTime() { return this.sting ? this.sting.audio.currentTime - (this.stingTrack?.start ?? 0) : 0; }
 
 	/** Kurzer Musik-Tusch ("tada" oder "winner"). Liefert die Dauer in ms (geschätzt, falls Metadaten fehlen). */
 	playSting(kind: "tada" | "winner"): Promise<number> {
 		this.ensure();
 		const track = this.tracks ? this.pick(this.listFor(kind), kind) : null;
 		if (!track || !this.sting) { if (kind === "tada") this.fanfare(); return Promise.resolve(2500); }
+		this.stingTrack = track;
 		this.sting.play(track, 0.01, 1);
 		this.onTrack?.(track);
 		return new Promise(res => {

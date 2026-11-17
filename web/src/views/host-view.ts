@@ -27,6 +27,9 @@ export class HostView extends LightElement {
 	@state() private error = "";
 	@state() private composer = false;
 	@state() private composerError = "";
+	/** Sieger-Song: wait = kommt gleich, play = läuft, intro = blendet nach dem Intro aus, done = vorbei/übersprungen */
+	@state() private song: "" | "wait" | "play" | "intro" | "done" = "";
+	private songGen = 0;
 
 	private conn: HubConnection | null = null;
 	private stage: Stage | null = null;
@@ -131,6 +134,7 @@ export class HostView extends LightElement {
 		this.shownKey = key;
 		this.prevIds = new Set(s.players.map(p => p.id));
 		this.timers.clear();
+		this.song = ""; this.songGen++;
 		document.body.className = `host ph-${s.phase}${this.stage ? " has3d" : ""}`;
 		this.stage?.setMode(s.phase);
 		this.applyMusic(s.phase);
@@ -223,19 +227,25 @@ export class HostView extends LightElement {
 		};
 		if (top3[2]) this.timers.later(1200, () => { show(3); if (this.unlocked) sound.pop(); });
 		if (top3[1]) this.timers.later(3000, () => { show(2); if (this.unlocked) sound.pop(); });
+		if (top3[0] && this.unlocked && sound.hasSting("winner")) this.song = "wait";
 		if (top3[0]) {
-			this.timers.later(4400, () => { if (this.unlocked) sound.drumroll(3.2); });
-			this.timers.later(7600, async () => {
+			this.timers.later(5000, async () => {
 				show(1);
 				this.stage?.burst(380, undefined, 1.3);
 				this.timers.later(1800, () => this.stage?.rain(400));
 				if (!this.stage) confetti(300, 0.5, 0.7);
 				if (!this.unlocked) return;
-				// optionaler Tusch, dann der Sieger-Song in voller Länge, danach Feier-Musik
+				// optionaler Tusch, dann der Sieger-Song (ganz, nach dem Intro oder gar nicht), danach Feier-Musik
+				if (this.song === "done" || this.song === "") { sound.mood("celebrate", { fade: 2 }); return; }
 				const ms = sound.hasSting("tada") ? await sound.playSting("tada") + 200 : 0;
 				this.timers.later(ms, async () => {
+					if (this.song === "done") { sound.mood("celebrate", { fade: 2 }); return; }
+					const g = this.songGen, key = this.shownKey;
 					const ms2 = await sound.playSting("winner");
-					this.timers.later(ms2 + 300, () => sound.mood("celebrate", { fade: 2 }));
+					if (key !== this.shownKey) { sound.stopSting(0.5); return; }                               // Phase inzwischen gewechselt
+					if ((this.song as string) === "done") { sound.stopSting(1); sound.mood("celebrate", { fade: 2 }); return; } // während des Ladens weggeklickt
+					if (this.song === "intro") this.scheduleIntroFade(); else this.song = "play";
+					this.timers.later(ms2 + 300, () => { if (g === this.songGen) { this.song = "done"; sound.mood("celebrate", { fade: 2 }); } });
 				});
 			});
 		}
@@ -251,6 +261,27 @@ export class HostView extends LightElement {
 			this.timers.raf(place);
 		};
 		place();
+	}
+
+	/** Sieger-Song sofort ausblenden (vor dem Start: überspringen), danach Feier-Musik */
+	private endSong = () => {
+		const playing = this.song === "play" || this.song === "intro";
+		this.songGen++;
+		this.song = "done";
+		if (!playing) return;                       // noch nicht gestartet: enterPodium spielt dann gleich celebrate
+		sound.stopSting(2);
+		this.timers.later(2300, () => sound.mood("celebrate", { fade: 2 }));
+	};
+	/** Sieger-Song nach dem Intro ausblenden (Ausblenden ab introEnd, 2 s) */
+	private fadeAfterIntro = () => {
+		const wasWaiting = this.song === "wait";
+		this.song = "intro";
+		if (!wasWaiting) this.scheduleIntroFade();  // läuft schon – sonst plant enterPodium beim Start
+	};
+	private scheduleIntroFade() {
+		const g = ++this.songGen;
+		const at = sound.stingTrack?.introEnd ?? 18;
+		this.timers.later(Math.max(0, (at - sound.stingTime()) * 1000), () => { if (g === this.songGen) this.endSong(); });
 	}
 
 	// ------------------------------------------------------------ Rendering
@@ -302,7 +333,13 @@ export class HostView extends LightElement {
 			case "answering": return html`${end}<button class="btn" data-main @click=${this.next}>Zeit beenden ⏹</button>`;
 			case "reveal": return html`${end}${dq}<button class="btn primary" data-main @click=${this.next}>${s.isLast ? "Zur Siegerehrung 🏆" : "Zwischenstand ▶"}</button>`;
 			case "scoreboard": return html`${end}${dq}<button class="btn primary" data-main @click=${this.next}>Nächste Frage ▶</button>`;
-			case "podium": return html`<button class="btn primary" data-main @click=${this.next}>Statistik anzeigen 📊</button>`;
+			case "podium": {
+				const sg = this.song;
+				const songBtns = sg === "wait" || sg === "play" || sg === "intro" ? html`
+					<button class="btn ghost" @click=${this.endSong}>🔇 Lied ausblenden</button>
+					<button class="btn ghost" ?disabled=${sg === "intro"} @click=${this.fadeAfterIntro}>${sg === "intro" ? "✂ blendet nach dem Intro aus" : "✂ Nach dem Intro ausblenden"}</button>` : nothing;
+				return html`${songBtns}<button class="btn primary" data-main @click=${this.next}>Statistik anzeigen 📊</button>`;
+			}
 			case "final": return dq;
 			default: return nothing;
 		}

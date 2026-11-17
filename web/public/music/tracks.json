@@ -76,7 +76,8 @@
     {
       "file": "podium_gehoert_euch.mp3",
       "title": "Das Podium gehört euch",
-      "author": "Klaus Liebler (mit Suno erstellt)"
+      "author": "Klaus Liebler (mit Suno erstellt)",
+      "introEnd": 18
     }
   ],
   "themes": {
