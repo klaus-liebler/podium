@@ -18,7 +18,7 @@ export interface PlayerDirect {
 	mine: { choices: number[] | null; number: number | null; text: string | null } | null;
 }
 
-/** body = 3D-Figur, aid = Hilfsmittel (0 keins, 1 Rollstuhl, 2 Brille) */
+/** body = 3D-Figur, aid = Hilfsmittel (0 keins, 1 Brille, 2 Sonnenbrille) */
 export interface AvatarSpec { shape: number; color: number; eyes: number; mouth: number; hat: number; body: number; aid: number; }
 
 export interface HostPlayer {

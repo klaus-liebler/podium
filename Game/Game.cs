@@ -41,12 +41,12 @@ public sealed record QuestionSnap(string Text, int TimeLimitSeconds, int PointsM
 }
 
 /// <summary>Gestaltbarer Avatar: jeweils ein Index in eine feste Teile-Liste (Client rendert SVG).</summary>
-/// <remarks>Body = 3D-Figur (Kenney Mini Characters), Aid = Hilfsmittel (0 keins, 1 Rollstuhl, 2 Brille, 3 Sonnenbrille)</remarks>
+/// <remarks>Body = 3D-Figur (Kenney Mini Characters), Aid = Hilfsmittel (0 keins, 1 Brille, 2 Sonnenbrille)</remarks>
 public sealed record Avatar(int Shape, int Color, int Eyes, int Mouth, int Hat, int Body = 0, int Aid = 0)
 {
     public static Avatar Sanitize(Avatar? a) => a is null
         ? new Avatar(0, 0, 0, 0, 0)
-        : new Avatar(C(a.Shape), C(a.Color), C(a.Eyes), C(a.Mouth), C(a.Hat), C(a.Body), Math.Clamp(a.Aid, 0, 3));
+        : new Avatar(C(a.Shape), C(a.Color), C(a.Eyes), C(a.Mouth), C(a.Hat), C(a.Body), Math.Clamp(a.Aid, 0, 2));
     static int C(int v) => Math.Clamp(v, 0, 31);
 }
 

@@ -1,5 +1,5 @@
 // Animierte 3D-Figur (Kenney Mini Characters, CC0) für einen Teilnehmenden.
-// Übernimmt aus dem gestalteten Avatar: Figur, Hut/Extra, Sonnenbrille, Farbe (Namensschild), Hilfsmittel (Rollstuhl/Brille).
+// Übernimmt aus dem gestalteten Avatar: Figur, Hut/Extra, Sonnenbrille, Farbe (Namensschild), Hilfsmittel (Brille/Sonnenbrille).
 import {
 	AnimationMixer, Box3, BoxGeometry, CanvasTexture, ConeGeometry, CylinderGeometry, Group, LoopOnce, LoopRepeat, Mesh,
 	MeshBasicMaterial, MeshStandardMaterial, Object3D, SphereGeometry, Sprite, SpriteMaterial, SRGBColorSpace, TorusGeometry, Vector3,
@@ -14,12 +14,6 @@ export const CHARACTER_FILES = BODY_FILES;
 
 export type Anim = "idle" | "walk" | "sprint" | "jump" | "fall" | "sit" | "emote-yes" | "emote-no" | "interact-right" | "pick-up" | "crouch";
 
-const WHEEL: Partial<Record<Anim, string>> = {
-	idle: "wheelchair-sit", sit: "wheelchair-sit", walk: "wheelchair-move-forward", sprint: "wheelchair-move-forward",
-	jump: "wheelchair-look-left", "emote-yes": "wheelchair-look-right", "emote-no": "wheelchair-look-left", fall: "wheelchair-sit",
-	crouch: "wheelchair-sit", "pick-up": "wheelchair-look-left", "interact-right": "wheelchair-look-right",
-};
-
 export class Figure {
 	readonly root = new Group();
 	readonly hit: Mesh;
@@ -30,7 +24,6 @@ export class Figure {
 	private current: AnimationAction | null = null;
 	private currentName = "";
 	private label: Sprite | null = null;
-	private wheelchair = false;
 	private body: Object3D | null = null;
 	private onceDone: (() => void) | null = null;
 	private prop: Object3D | null = null;
@@ -55,18 +48,13 @@ export class Figure {
 		const box = new Box3().setFromObject(body);
 		f.height = box.max.y;
 
-		f.wheelchair = spec.aid === 1;
-		if (f.wheelchair) {
-			const chair = await model("characters/wheelchair.glb");
-			f.root.add(chair);
-		}
 		const head = body.getObjectByName("head");
 		if (head) {
 			// Kopf-Oberkante im Knochen-Koordinatensystem
 			const topLocal = head.worldToLocal(new Vector3(0, box.max.y, 0));
 			const hat = makeHat(spec.hat, spec.color);
 			if (hat) { hat.position.copy(topLocal); hat.position.x = 0; hat.position.z = 0; hat.position.y -= 0.02; head.add(hat); f.prop = hat.getObjectByName("propeller") ?? null; }
-			const glasses = spec.aid === 3 ? "aid-sunglasses" : spec.aid === 2 ? "aid-glasses" : null;
+			const glasses = spec.aid === 2 ? "aid-sunglasses" : spec.aid === 1 ? "aid-glasses" : null;
 			if (glasses) {
 				const gl = await model(`characters/${glasses}.glb`);
 				gl.position.set(0, topLocal.y * 0.45, 0.17);
@@ -110,9 +98,9 @@ export class Figure {
 		return a;
 	}
 
-	/** Animation abspielen (Rollstuhl-Varianten automatisch). once: einmal, danach callback/idle. */
+	/** Animation abspielen. once: einmal, danach callback/idle. */
 	play(anim: Anim, opts: { once?: boolean; fade?: number; speed?: number; then?: () => void; offset?: number } = {}) {
-		const name = this.wheelchair ? (WHEEL[anim] ?? "wheelchair-sit") : anim;
+		const name = anim;
 		if (name === this.currentName && !opts.once) return;
 		const a = this.action(name); if (!a) return;
 		a.reset();
@@ -128,7 +116,6 @@ export class Figure {
 		this.onceDone = opts.once ? (opts.then ?? (() => this.play("idle"))) : null;
 	}
 	get anim() { return this.currentName; }
-	get isWheelchair() { return this.wheelchair; }
 
 	update(dt: number) { this.mixer?.update(dt); if (this.prop) this.prop.rotation.y += dt * 14; }
 

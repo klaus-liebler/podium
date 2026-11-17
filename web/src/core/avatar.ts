@@ -119,7 +119,7 @@ export const BODY_FILES = [
   "character-alien", "character-zombie",
 ];
 const BODY_COUNT = BODY_FILES.length;
-export const AID_NAMES = ['Keins', 'Rollstuhl', 'Brille', 'Sonnenbrille'];
+export const AID_NAMES = ['Keins', 'Brille', 'Sonnenbrille'];
 export const bodyPreview = (i: number) => `models/characters/previews/${BODY_FILES[((i % BODY_COUNT) + BODY_COUNT) % BODY_COUNT]}.png`;
 
 /** Teile der 3D-Figur, die auf dem Handy gewählt werden (color = Farbe des Namensschilds) */

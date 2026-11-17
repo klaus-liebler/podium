@@ -426,7 +426,7 @@ export class Stage {
 					}
 					const fast = dist > 2.5 && this.mode !== "lobby";
 					fig.play(fast ? "sprint" : "walk");
-					const sp = (fast ? 2.6 : 0.9) * (fig.isWheelchair ? 0.85 : 1);
+					const sp = (fast ? 2.6 : 0.9);
 					const dir = this.steer(e, d.normalize(), list);
 					e.pos.addScaledVector(dir, Math.min(dist, sp * dt));
 					const want = Math.atan2(dir.x, dir.z);
