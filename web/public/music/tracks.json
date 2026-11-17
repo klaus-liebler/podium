@@ -1,0 +1,115 @@
+{
+  "_info": "Alle Stücke sind CC0 (gemeinfrei) von opengameart.org. lobby = Warteraum, question = Antwortzeit (wird mit Stoppuhr-Ticken gemischt), celebrate = Zwischenstand/Siegerehrung, tada = Tusch für Platz 1, winner = Fanfare danach (start/end = Ausschnitt in Sekunden). themes.<id> überschreibt einzelne Stimmungen für eine 3D-Welt.",
+  "lobby": [
+    {
+      "file": "elevator2.mp3",
+      "title": "Elevator Music 2",
+      "author": "Pro Sensory",
+      "url": "https://opengameart.org/content/elevator-music-2"
+    },
+    {
+      "file": "bossa_town.mp3",
+      "title": "Bossa Town",
+      "author": "KarateStudios",
+      "url": "https://opengameart.org/content/bossa-town"
+    },
+    {
+      "file": "jazz_improv.mp3",
+      "title": "Jazz Improvisation (looped)",
+      "author": "Pro Sensory / Alex McCulloch",
+      "url": "https://opengameart.org/content/jazz-improvisation-looped"
+    },
+    {
+      "file": "honey_bear.mp3",
+      "title": "Honey Bear",
+      "author": "Tiny Worlds",
+      "url": "https://opengameart.org/content/honey-bear"
+    }
+  ],
+  "question": [
+    {
+      "file": "chill_lofi.mp3",
+      "title": "Chill Lofi Inspired",
+      "author": "omfgdude",
+      "url": "https://opengameart.org/content/chill-lofi-inspired"
+    },
+    {
+      "file": "lofi_hiphop.ogg",
+      "title": "Lofi Hip Hop",
+      "author": "omfgdude",
+      "url": "https://opengameart.org/content/lofi-hip-hop"
+    },
+    {
+      "file": "jazzy_blues.mp3",
+      "title": "Jazzy Blues",
+      "author": "LushoGames",
+      "url": "https://opengameart.org/content/jazzy-blues"
+    },
+    {
+      "file": "one_step.mp3",
+      "title": "One Step at a Time",
+      "author": "Pro Sensory",
+      "url": "https://opengameart.org/content/one-step-at-a-time"
+    }
+  ],
+  "celebrate": [
+    {
+      "file": "buy_something.mp3",
+      "title": "Buy Something! (Shop Theme)",
+      "author": "Cleyton Kauffman",
+      "url": "https://opengameart.org/content/shop-theme"
+    },
+    {
+      "file": "apple_cider.mp3",
+      "title": "Apple Cider",
+      "author": "Zane Little Music",
+      "url": "https://opengameart.org/content/apple-cider"
+    },
+    {
+      "file": "rhythm_factory.mp3",
+      "title": "Rhythm Factory",
+      "author": "Zane Little Music",
+      "url": "https://opengameart.org/content/rhythm-factory"
+    }
+  ],
+  "tada": [
+    {
+      "file": "epic_transformation.ogg",
+      "title": "Epic Transformation",
+      "author": "dizzy-crow (CC0)",
+      "url": "https://opengameart.org/content/epic-transformation-124",
+      "start": 30.3,
+      "end": 39.8
+    }
+  ],
+  "winner": [
+    {
+      "file": "epic_transformation.ogg",
+      "title": "Epic Transformation",
+      "author": "dizzy-crow (CC0)",
+      "url": "https://opengameart.org/content/epic-transformation-124",
+      "start": 61.3,
+      "end": 76.4
+    }
+  ],
+  "themes": {
+    "nature": {
+      "lobby": [
+        {
+          "file": "morgenstimmung.ogg",
+          "title": "Peer Gynt Suite Nr. 1 · Morgenstimmung (Grieg)",
+          "author": "Musopen Symphony Orchestra (gemeinfrei)",
+          "url": "https://commons.wikimedia.org/wiki/File:Musopen_-_Morning.ogg"
+        }
+      ],
+      "celebrate": [
+        {
+          "file": "morgenstimmung.ogg",
+          "title": "Peer Gynt Suite Nr. 1 · Morgenstimmung (Grieg)",
+          "author": "Musopen Symphony Orchestra (gemeinfrei)",
+          "url": "https://commons.wikimedia.org/wiki/File:Musopen_-_Morning.ogg"
+        }
+      ]
+    }
+  }
+}

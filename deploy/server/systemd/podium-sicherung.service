@@ -1,0 +1,9 @@
+# Tägliche Online-Sicherung der Podium-Datenbank (ausgelöst von podium-sicherung.timer)
+[Unit]
+Description=Podium Datenbank-Sicherung
+
+[Service]
+Type=oneshot
+User=podium
+Group=podium
+ExecStart=/opt/podium-werkzeuge/sicherung.sh

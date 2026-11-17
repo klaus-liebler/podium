@@ -1,0 +1,28 @@
+# .NET
+bin/
+obj/
+*.user
+.vs/
+
+# Laufzeitdaten – niemals ins Repository (Konten, Quizze, Cookie-Schlüssel)
+*.db
+*.db-shm
+*.db-wal
+schluessel/
+appsettings.*.local.json
+
+# Build-Ergebnis der Oberfläche (entsteht mit: cd web; npm run build)
+wwwroot/
+
+# Oberfläche
+web/node_modules/
+web/stats.html
+
+# Deploy-Ausgabe (Archive, Builds)
+deploy/ausgabe/
+
+# Editor/OS
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store
