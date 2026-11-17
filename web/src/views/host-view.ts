@@ -216,7 +216,9 @@ export class HostView extends LightElement {
 	private enterPodium(s: HostState) {
 		const top3 = s.players.slice(0, 3);
 		this.stage?.setPodium(Object.fromEntries(top3.map((p, i) => [i + 1, p.id])));
-		if (this.unlocked) sound.mood(null, { fade: 1.2 });
+		if (this.unlocked) sound.mood(null, { fade: 0.8 });
+		// Sieger-Song beginnt sofort mit der Siegerehrung (ist vorab geladen, siehe AudioEngine.preloadSting)
+		if (top3[0] && this.unlocked && sound.hasSting("winner")) { this.song = "wait"; void this.startSong(); }
 		const overlays = new Map<number, { el: HTMLElement; id: string }>();
 		this.querySelectorAll<HTMLElement>(".winner").forEach(el => overlays.set(Number(el.dataset.place), { el, id: el.dataset.id! }));
 		const show = (place: number) => {
@@ -227,26 +229,13 @@ export class HostView extends LightElement {
 		};
 		if (top3[2]) this.timers.later(1200, () => { show(3); if (this.unlocked) sound.pop(); });
 		if (top3[1]) this.timers.later(3000, () => { show(2); if (this.unlocked) sound.pop(); });
-		if (top3[0] && this.unlocked && sound.hasSting("winner")) this.song = "wait";
 		if (top3[0]) {
-			this.timers.later(5000, async () => {
+			this.timers.later(5000, () => {
 				show(1);
 				this.stage?.burst(380, undefined, 1.3);
 				this.timers.later(1800, () => this.stage?.rain(400));
 				if (!this.stage) confetti(300, 0.5, 0.7);
-				if (!this.unlocked) return;
-				// optionaler Tusch, dann der Sieger-Song (ganz, nach dem Intro oder gar nicht), danach Feier-Musik
-				if (this.song === "done" || this.song === "") { sound.mood("celebrate", { fade: 2 }); return; }
-				const ms = sound.hasSting("tada") ? await sound.playSting("tada") + 200 : 0;
-				this.timers.later(ms, async () => {
-					if (this.song === "done") { sound.mood("celebrate", { fade: 2 }); return; }
-					const g = this.songGen, key = this.shownKey;
-					const ms2 = await sound.playSting("winner");
-					if (key !== this.shownKey) { sound.stopSting(0.5); return; }                               // Phase inzwischen gewechselt
-					if ((this.song as string) === "done") { sound.stopSting(1); sound.mood("celebrate", { fade: 2 }); return; } // während des Ladens weggeklickt
-					if (this.song === "intro") this.scheduleIntroFade(); else this.song = "play";
-					this.timers.later(ms2 + 300, () => { if (g === this.songGen) { this.song = "done"; sound.mood("celebrate", { fade: 2 }); } });
-				});
+				if (this.unlocked && this.song === "") sound.mood("celebrate", { fade: 2 }); // kein Sieger-Song vorhanden
 			});
 		}
 		const place = () => {
@@ -261,6 +250,24 @@ export class HostView extends LightElement {
 			this.timers.raf(place);
 		};
 		place();
+	}
+
+	/** Optionaler Tusch, dann der Sieger-Song (ganz, nach dem Intro oder gar nicht), danach Feier-Musik */
+	private async startSong() {
+		const key = this.shownKey;
+		const stale = () => key !== this.shownKey;                   // Phase inzwischen gewechselt
+		if (sound.hasSting("tada")) {
+			const ms = await sound.playSting("tada");
+			await new Promise(r => setTimeout(r, ms + 200));
+			if (stale()) return;
+		}
+		if (this.song === "done") { sound.mood("celebrate", { fade: 2 }); return; }
+		const g = this.songGen;
+		const ms2 = await sound.playSting("winner");
+		if (stale()) { sound.stopSting(0.5); return; }
+		if ((this.song as string) === "done") { sound.stopSting(1); sound.mood("celebrate", { fade: 2 }); return; } // während des Ladens weggeklickt
+		if (this.song === "intro") this.scheduleIntroFade(); else this.song = "play";
+		this.timers.later(ms2 + 300, () => { if (g === this.songGen) { this.song = "done"; sound.mood("celebrate", { fade: 2 }); } });
 	}
 
 	/** Sieger-Song sofort ausblenden (vor dem Start: überspringen), danach Feier-Musik */

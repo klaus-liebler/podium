@@ -29,15 +29,24 @@ class Deck {
 		this.audio.addEventListener("ended", () => onEnded(this));
 	}
 	private endTimer = 0;
+	private file = "";
+	/** Datei vorab laden (ohne abzuspielen), damit play() sofort beginnt */
+	load(track: Track) {
+		if (this.file === track.file) return;
+		this.file = track.file;
+		this.audio.onerror = () => this.e.trackFailed(track, this);
+		this.audio.src = MUSIC + track.file;
+		this.audio.load();
+	}
 	play(track: Track, fade: number, level = 1) {
 		const t = this.e.ctx!.currentTime;
 		clearTimeout(this.pauseTimer); clearTimeout(this.endTimer);
 		this.audio.onerror = () => this.e.trackFailed(track, this);
-		this.audio.src = MUSIC + track.file;
+		if (this.file !== track.file) { this.file = track.file; this.audio.src = MUSIC + track.file; } // schon geladen: weiterverwenden
 		this.audio.playbackRate = 1;
 		this.audio.preservesPitch = true;
 		const start = track.start ?? 0;
-		const seek = () => { if (start) this.audio.currentTime = start; };
+		const seek = () => { this.audio.currentTime = start; };      // auch 0: Deck kann schon einmal gespielt haben
 		if (this.audio.readyState >= 1) seek(); else this.audio.addEventListener("loadedmetadata", seek, { once: true });
 		if (track.end != null) {
 			const len = (track.end - start) * 1000;
@@ -118,6 +127,7 @@ export class AudioEngine {
 	private async loadTracks() {
 		try { this.tracks = await (await fetch(MUSIC + "tracks.json", { cache: "no-cache" })).json(); }
 		catch { this.tracks = {}; }
+		this.preloadSting("winner");
 		if (this.pendingMood !== undefined) { const m = this.pendingMood; this.pendingMood = undefined; this.mood(m); }
 	}
 
@@ -215,6 +225,15 @@ export class AudioEngine {
 
 	/** Gibt es für diesen Tusch ein (ladbares) Stück in tracks.json? */
 	hasSting(kind: "tada" | "winner") { return !!this.tracks && this.listFor(kind).length > 0; }
+	/** Sieger-Song schon beim Öffnen der Leinwand laden, damit er mit der Siegerehrung ohne Verzögerung startet */
+	private preloaded: Partial<Record<"tada" | "winner", Track>> = {};
+	preloadSting(kind: "tada" | "winner") {
+		if (!this.sting || !this.tracks) return;
+		const track = this.pick(this.listFor(kind), kind);
+		if (!track) return;
+		this.preloaded[kind] = track;
+		this.sting.load(track);
+	}
 	/** Laufenden Tusch/Sieger-Song ausblenden (z. B. beim Weiterklicken) */
 	stopSting(fade = 1.2) { if (this.sting && !this.sting.audio.paused) this.sting.fadeOut(fade); }
 	/** Zuletzt gestarteter Tusch/Sieger-Song und seine Position (Sekunden ab Ausschnittbeginn) */
@@ -224,7 +243,8 @@ export class AudioEngine {
 	/** Kurzer Musik-Tusch ("tada" oder "winner"). Liefert die Dauer in ms (geschätzt, falls Metadaten fehlen). */
 	playSting(kind: "tada" | "winner"): Promise<number> {
 		this.ensure();
-		const track = this.tracks ? this.pick(this.listFor(kind), kind) : null;
+		const pre = this.preloaded[kind];
+		const track = (pre && !this.bad.has(pre.file) ? pre : null) ?? (this.tracks ? this.pick(this.listFor(kind), kind) : null);
 		if (!track || !this.sting) { if (kind === "tada") this.fanfare(); return Promise.resolve(2500); }
 		this.stingTrack = track;
 		this.sting.play(track, 0.01, 1);
