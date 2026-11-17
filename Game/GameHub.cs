@@ -22,6 +22,7 @@ public sealed class GameHub(GameManager games) : Hub
 
     public Task HostNext(string pin, string hostKey) => games.NextAsync(HostGame(pin, hostKey));
     public Task HostFinish(string pin, string hostKey) => games.FinishEarlyAsync(HostGame(pin, hostKey));
+    public Task HostClose(string pin, string hostKey) => games.CloseAsync(HostGame(pin, hostKey));
     public Task HostKick(string pin, string hostKey, string playerId) => games.KickAsync(HostGame(pin, hostKey), playerId);
 
     // DirectMode: spontane Fragen

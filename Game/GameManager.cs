@@ -160,6 +160,17 @@ public sealed class GameManager(IHubContext<GameHub> hub, IServiceScopeFactory s
         }
     }
 
+    /// <summary>Raum schließen: offene Direktfrage archivieren, Raum entfernen, Handys benachrichtigen.</summary>
+    public async Task CloseAsync(Game g)
+    {
+        await DirectCloseAsync(g);                       // archiviert eine noch offene Abstimmung (sonst nichts)
+        if (!_games.TryRemove(g.Pin, out _)) return;
+        string[] conns;
+        lock (g.Lock) conns = g.Players.Values.Select(p => p.ConnectionId).OfType<string>().ToArray();
+        await Task.WhenAll(conns.Select(c => hub.Clients.Client(c).SendAsync("closed")));
+        log.LogInformation("Raum {Pin} ({Title}) geschlossen", g.Pin, g.QuizTitle);
+    }
+
     public async Task KickAsync(Game g, string playerId)
     {
         string? conn;

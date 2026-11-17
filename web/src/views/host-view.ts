@@ -70,6 +70,13 @@ export class HostView extends LightElement {
 
 	private next = () => void this.conn?.invoke("HostNext", this.pin, this.hostKey);
 	private finish = () => { if (confirm("Quiz jetzt beenden und zur Siegerehrung springen?")) void this.conn?.invoke("HostFinish", this.pin, this.hostKey); };
+	/** Raum schließen und zurück zur Übersicht (Handys sehen „Runde beendet“) */
+	private close = async () => {
+		const n = this.s?.players.length ?? 0;
+		if (n > 0 && this.s?.phase !== "final" && !confirm(`Runde beenden? ${n === 1 ? "Eine Person ist noch verbunden und wird" : `${n} Personen sind noch verbunden und werden`} getrennt.`)) return;
+		try { await this.conn?.invoke("HostClose", this.pin, this.hostKey); } catch { /* Raum evtl. schon weg */ }
+		location.hash = "#/";
+	};
 	private kick(id: string) {
 		const p = this.s?.players.find(x => x.id === id);
 		if (p && confirm(`„${p.nick}“ aus dem Spiel entfernen?`)) void this.conn?.invoke("HostKick", this.pin, this.hostKey, id);
@@ -325,16 +332,17 @@ export class HostView extends LightElement {
 	private renderControls(s: HostState): TemplateResult | typeof nothing {
 		const end = s.hasQuiz ? html`<button class="btn ghost" @click=${this.finish}>Beenden</button>` : nothing;
 		const dq = html`<button class="btn ghost" title="Direktfrage (D)" @click=${() => this.openComposer()}>⚡ Direktfrage</button>`;
+		const close = html`<button class="btn ghost" title="Raum schließen und zur Übersicht" @click=${this.close}>✕ Runde beenden</button>`;
 		switch (s.phase) {
 			case "lobby": return s.hasQuiz
-				? html`${dq}<button class="btn primary big" data-main ?disabled=${s.players.length === 0} @click=${this.next}>Los geht's ▶</button>`
-				: html`<button class="btn primary big" data-main @click=${() => this.openComposer()}>⚡ Frage stellen</button>`;
+				? html`${close}${dq}<button class="btn primary big" data-main ?disabled=${s.players.length === 0} @click=${this.next}>Los geht's ▶</button>`
+				: html`${close}<button class="btn primary big" data-main @click=${() => this.openComposer()}>⚡ Frage stellen</button>`;
 			case "direct": {
 				const d = s.direct!;
 				return d.open
 					? html`<button class="btn ghost" @click=${() => this.directLive(!d.live)}>${d.live ? "👁 Live-Anzeige aus" : "👁 Live-Anzeige an"}</button>
 						<button class="btn primary" data-main @click=${this.directClose}>Abstimmung schließen ⏹</button>`
-					: html`${dq}<button class="btn primary" data-main @click=${this.directEnd}>Zurück ▶</button>`;
+					: html`${s.hasQuiz ? nothing : close}${dq}<button class="btn primary" data-main @click=${this.directEnd}>Zurück ▶</button>`;
 			}
 			case "intro": return html`${end}<button class="btn" data-main @click=${this.next}>Überspringen ⏭</button>`;
 			case "answering": return html`${end}<button class="btn" data-main @click=${this.next}>Zeit beenden ⏹</button>`;
@@ -347,7 +355,7 @@ export class HostView extends LightElement {
 					<button class="btn ghost" ?disabled=${sg === "intro"} @click=${this.fadeAfterIntro}>${sg === "intro" ? "✂ blendet nach dem Intro aus" : "✂ Nach dem Intro ausblenden"}</button>` : nothing;
 				return html`${songBtns}<button class="btn primary" data-main @click=${this.next}>Statistik anzeigen 📊</button>`;
 			}
-			case "final": return dq;
+			case "final": return html`${close}${dq}`;
 			default: return nothing;
 		}
 	}
@@ -511,7 +519,7 @@ export class HostView extends LightElement {
 			</div>
 			<div class="final-actions">
 				<button class="btn" @click=${() => this.csv(s)}>⬇ Ergebnisse als CSV</button>
-				<a class="btn ghost" href="#/" style="text-decoration:none">Zur Übersicht</a>
+				<button class="btn ghost" @click=${this.close}>Zur Übersicht</button>
 			</div>
 		</section>`;
 	}

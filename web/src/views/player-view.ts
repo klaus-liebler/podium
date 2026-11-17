@@ -12,7 +12,7 @@ import type { AvatarSpec, PlayerDirect, PlayerState } from "../core/types.ts";
 
 const av = (a: AvatarSpec) => figureImg(a); // Porträt der 3D-Figur
 interface Session { pin: string; playerId: string; }
-type Screen = "connecting" | "join" | "game" | "editAvatar" | "kicked" | "lost" | "notfound";
+type Screen = "connecting" | "join" | "game" | "editAvatar" | "kicked" | "lost" | "notfound" | "closed";
 
 @customElement("player-view")
 export class PlayerView extends LightElement {
@@ -47,9 +47,10 @@ export class PlayerView extends LightElement {
 		document.body.className = "player";
 		const c = this.conn = connectHub();
 		c.on("state", (s: PlayerState) => this.onState(s));
+		c.on("closed", () => { store.del("podium-session"); this.s = null; this.shownKey = ""; this.screen = "closed"; void c.stop(); });
 		c.on("kicked", () => { store.del("podium-session"); this.s = null; this.shownKey = ""; this.screen = "kicked"; });
 		c.onreconnected(() => void (this.anon ? this.audienceJoin() : this.tryRejoin()));
-		c.onclose(() => { this.screen = "lost"; });
+		c.onclose(() => { if (this.screen !== "closed") this.screen = "lost"; });
 		c.start().then(() => this.anon ? this.audienceJoin() : this.tryRejoin()).catch(() => { this.screen = "lost"; });
 	}
 
@@ -247,6 +248,7 @@ export class PlayerView extends LightElement {
 			case "join": return this.joinForm();
 			case "editAvatar": return html`<h2>Figur ändern</h2><div class="join-card glass">${this.avatarEditor()}
 				<button class="btn primary" @click=${async () => { await this.conn!.invoke("PlayerAvatar", this.s!.pin, this.avatar); this.screen = "game"; }}>Fertig</button></div>`;
+			case "closed": return html`<div class="logo">Podi<span>um</span></div><h2>Die Runde ist beendet.</h2><p class="muted">Danke fürs Mitmachen!</p>`;
 			case "kicked": return html`<h2>Du wurdest aus dem Spiel entfernt.</h2><button class="btn" @click=${() => location.reload()}>Neu beitreten</button>`;
 			case "lost": return html`<h2>Verbindung verloren</h2><p class="muted">Bitte Seite neu laden.</p><button class="btn" @click=${() => location.reload()}>Neu laden</button>`;
 			case "notfound": return html`<div class="logo">Podi<span>um</span></div><h2>${this.error}</h2><p class="muted">Bitte den QR-Code erneut scannen.</p>`;
