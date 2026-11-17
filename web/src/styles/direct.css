@@ -85,8 +85,13 @@ body.teacher .imp-row { display: flex; gap: 12px; align-items: flex-end; }
 
 .screen.direct .dr-area { background: rgba(14, 10, 40, .82); backdrop-filter: blur(18px); }
 
-/* Live-Fragerunde: QR-Code in der Ecke für Nachzügler */
-.dr-qr { position: fixed; left: 24px; bottom: 22px; z-index: 6; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 10px; border-radius: 16px; background: rgba(255,255,255,.95); color: #1b1340; box-shadow: 0 10px 30px rgba(0,0,0,.35); animation: qrIn .8s cubic-bezier(.2,.9,.3,1.3) both; }
-.dr-qr img { width: clamp(110px, 11vw, 170px); height: auto; display: block; }
-.dr-qr span { font-weight: 600; font-size: 1rem; }
-.screen.direct.has-qr .dr-area { width: min(1400px, calc(94vw - 240px)); margin-left: 240px; }
+/* Live-Fragerunde: großer QR-Code als eigene linke Spalte, solange abgestimmt wird (Nachzügler) */
+.screen.direct.has-qr { display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-rows: auto auto minmax(0, 1fr);
+  column-gap: 3vw; row-gap: 2vh; align-items: start; justify-items: center; }
+.screen.direct.has-qr > :not(.dr-qr) { grid-column: 2; }
+.screen.direct.has-qr .dr-area { width: 100%; height: 100%; margin-left: 0; }
+.dr-qr { grid-column: 1; grid-row: 1 / -1; align-self: center; display: flex; flex-direction: column; align-items: center; gap: 10px;
+  padding: 16px; border-radius: 22px; background: rgba(255,255,255,.96); color: #1b1340; box-shadow: 0 10px 30px rgba(0,0,0,.35);
+  margin-bottom: 80px; animation: qrIn .8s cubic-bezier(.2,.9,.3,1.3) both; }
+.dr-qr img { width: min(26vw, 52vh); height: auto; aspect-ratio: 1; display: block; }
+.dr-qr span { font-weight: 600; font-size: clamp(1.1rem, 1.6vw, 1.8rem); }

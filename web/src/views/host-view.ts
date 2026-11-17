@@ -529,7 +529,7 @@ export class HostView extends LightElement {
 			<div class="dr-area glass"><direct-results .d=${d}></direct-results></div>
 			${!qr ? nothing : html`<div class="dr-qr" title="Jetzt noch mitmachen">
 				<img src="api/qr?data=${encodeURIComponent(this.s!.joinUrl)}" alt="QR-Code zur Antwortseite">
-				<span>PIN <b>${this.s!.pin}</b></span></div>`}
+				<span>Mitmachen · PIN <b>${this.s!.pin}</b></span></div>`}
 		</section>`;
 	}
 
