@@ -117,6 +117,19 @@ public class AppDb(DbContextOptions<AppDb> options) : DbContext(options)
     public DbSet<GameSessionPlayer> GameSessionPlayers => Set<GameSessionPlayer>();
     public DbSet<DirectPoll> DirectPolls => Set<DirectPoll>();
 
+    /// <summary>
+    /// Alle Zeitpunkte sind UTC. SQLite speichert sie als Text ohne Zeitzone, EF liest sie als DateTimeKind.Unspecified –
+    /// dann fehlt im JSON das "Z" und der Browser hielte sie für Ortszeit. Beim Lesen daher als UTC kennzeichnen.
+    /// </summary>
+    protected override void ConfigureConventions(ModelConfigurationBuilder b)
+    {
+        b.Properties<DateTime>().HaveConversion<UtcConverter>();
+        b.Properties<DateTime?>().HaveConversion<UtcConverter>();
+    }
+    sealed class UtcConverter() : Microsoft.EntityFrameworkCore.Storage.ValueConversion.ValueConverter<DateTime, DateTime>(
+        v => v.Kind == DateTimeKind.Local ? v.ToUniversalTime() : v,
+        v => DateTime.SpecifyKind(v, DateTimeKind.Utc));
+
     /// <summary>EnsureCreated legt bei bestehender DB keine neuen Tabellen an – daher hier nachziehen.</summary>
     /// <summary>
     /// EnsureCreated legt bei einer bestehenden Datenbank keine neuen Tabellen/Spalten an – fehlende Teile hier nachziehen
