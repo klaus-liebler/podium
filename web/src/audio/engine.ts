@@ -213,6 +213,11 @@ export class AudioEngine {
 		this.resetTension(0.1);
 	}
 
+	/** Gibt es für diesen Tusch ein (ladbares) Stück in tracks.json? */
+	hasSting(kind: "tada" | "winner") { return !!this.tracks && this.listFor(kind).length > 0; }
+	/** Laufenden Tusch/Sieger-Song ausblenden (z. B. beim Weiterklicken) */
+	stopSting(fade = 1.2) { if (this.sting && !this.sting.audio.paused) this.sting.fadeOut(fade); }
+
 	/** Kurzer Musik-Tusch ("tada" oder "winner"). Liefert die Dauer in ms (geschätzt, falls Metadaten fehlen). */
 	playSting(kind: "tada" | "winner"): Promise<number> {
 		this.ensure();

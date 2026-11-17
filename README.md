@@ -63,4 +63,4 @@ Leertaste/Enter/→ = weiter · D = Direktfrage · M = Ton · F = Vollbild
 
 ## Lizenz
 
-Code: MIT (siehe `LICENSE`). Musik und 3D-Modelle: CC0 bzw. gemeinfrei, Nachweise in `web/public/music/CREDITS.md` und `web/public/models/KENNEY-LICENSE.txt`.
+Code: MIT (siehe `LICENSE`). Musik und 3D-Modelle: CC0 bzw. gemeinfrei (Ausnahme: der mit Suno erstellte Sieger-Song), Nachweise in `web/public/music/CREDITS.md` und `web/public/models/KENNEY-LICENSE.txt`.

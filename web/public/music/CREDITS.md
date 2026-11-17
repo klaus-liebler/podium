@@ -16,7 +16,12 @@ Eine Namensnennung ist nicht erforderlich, wir nennen die Urheber trotzdem gern:
 | buy_something.mp3 | Buy Something! | Cleyton Kauffman | https://opengameart.org/content/shop-theme |
 | apple_cider.mp3 | Apple Cider | Zane Little Music | https://opengameart.org/content/apple-cider |
 | rhythm_factory.mp3 | Rhythm Factory | Zane Little Music | https://opengameart.org/content/rhythm-factory |
-| epic_transformation.ogg | Epic Transformation (Ausschnitte als Tusch/Fanfare) | dizzy-crow | https://opengameart.org/content/epic-transformation-124 |
+
+## Eigener Sieger-Song (nicht CC0)
+
+| Datei | Titel | Urheber | Hinweis |
+|---|---|---|---|
+| podium_gehoert_euch.mp3 | Das Podium gehört euch | Klaus Liebler, erstellt mit Suno (suno.com) | Nicht gemeinfrei – Nutzung nach den Suno-Bedingungen des erstellenden Kontos |
 
 ## Gemeinfreie Klassik
 

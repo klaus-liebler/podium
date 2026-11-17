@@ -1,5 +1,5 @@
 {
-  "_info": "Alle Stücke sind CC0 (gemeinfrei) von opengameart.org. lobby = Warteraum, question = Antwortzeit (wird mit Stoppuhr-Ticken gemischt), celebrate = Zwischenstand/Siegerehrung, tada = Tusch für Platz 1, winner = Fanfare danach (start/end = Ausschnitt in Sekunden). themes.<id> überschreibt einzelne Stimmungen für eine 3D-Welt.",
+  "_info": "Alle Stücke außer winner sind CC0 (gemeinfrei) von opengameart.org bzw. gemeinfreie Klassik; winner ist ein eigener, mit Suno erstellter Song (nicht CC0, siehe CREDITS.md). lobby = Warteraum, question = Antwortzeit (wird mit Stoppuhr-Ticken gemischt), celebrate = Zwischenstand/Siegerehrung, tada = optionaler Tusch für Platz 1 (fehlt er, folgt winner direkt auf den Trommelwirbel), winner = Sieger-Song (start/end = optionaler Ausschnitt in Sekunden). themes.<id> überschreibt einzelne Stimmungen für eine 3D-Welt.",
   "lobby": [
     {
       "file": "elevator2.mp3",
@@ -72,24 +72,11 @@
       "url": "https://opengameart.org/content/rhythm-factory"
     }
   ],
-  "tada": [
-    {
-      "file": "epic_transformation.ogg",
-      "title": "Epic Transformation",
-      "author": "dizzy-crow (CC0)",
-      "url": "https://opengameart.org/content/epic-transformation-124",
-      "start": 30.3,
-      "end": 39.8
-    }
-  ],
   "winner": [
     {
-      "file": "epic_transformation.ogg",
-      "title": "Epic Transformation",
-      "author": "dizzy-crow (CC0)",
-      "url": "https://opengameart.org/content/epic-transformation-124",
-      "start": 61.3,
-      "end": 76.4
+      "file": "podium_gehoert_euch.mp3",
+      "title": "Das Podium gehört euch",
+      "author": "Klaus Liebler (mit Suno erstellt)"
     }
   ],
   "themes": {

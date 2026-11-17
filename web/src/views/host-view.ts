@@ -46,7 +46,7 @@ export class HostView extends LightElement {
 		window.removeEventListener("keydown", this.onKey);
 		this.timers.clear();
 		void this.conn?.stop();
-		sound.mood(null); sound.stopClock();
+		sound.mood(null); sound.stopClock(); sound.stopSting(0.5);
 	}
 
 	protected override firstUpdated() {
@@ -101,6 +101,7 @@ export class HostView extends LightElement {
 
 	private applyMusic(phase: Phase | undefined, initial = false) {
 		if (!this.unlocked) return;
+		if (phase !== "podium") sound.stopSting();
 		switch (phase) {
 			case "lobby": case "final": case "direct": sound.mood("lobby"); break;
 			case "intro": sound.mood("question", { force: !initial, fade: 0.8 }); break;
@@ -230,10 +231,11 @@ export class HostView extends LightElement {
 				this.timers.later(1800, () => this.stage?.rain(400));
 				if (!this.stage) confetti(300, 0.5, 0.7);
 				if (!this.unlocked) return;
-				const ms = await sound.playSting("tada");      // „Tadaaa“ mit Trompeten
-				this.timers.later(ms + 200, async () => {
-					const ms2 = await sound.playSting("winner"); // Sieger-Fanfare
-					this.timers.later(Math.min(ms2, 9000) + 300, () => sound.mood("celebrate", { fade: 2 }));
+				// optionaler Tusch, dann der Sieger-Song in voller Länge, danach Feier-Musik
+				const ms = sound.hasSting("tada") ? await sound.playSting("tada") + 200 : 0;
+				this.timers.later(ms, async () => {
+					const ms2 = await sound.playSting("winner");
+					this.timers.later(ms2 + 300, () => sound.mood("celebrate", { fade: 2 }));
 				});
 			});
 		}
