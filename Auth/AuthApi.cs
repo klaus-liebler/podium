@@ -44,23 +44,23 @@ public static class AuthApi
     /// <summary>Ändert sich bei Passwortwechsel/Rechteänderung -> alte Sitzungen werden ungültig</summary>
     static string Stamp(User u) => Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(u.PasswordHash + u.IsAdmin)))[..16];
 
-    // ---------------------------------------------------------------- Erstes Konto beim Start
-    public static void EnsureAdmin(AppDb db, IConfiguration cfg, ILogger log)
+    // ---------------------------------------------------------------- Ersteinrichtung
+    // Wie bei evcc: Solange die Datenbank KEIN Konto enthält, darf das erste Admin-Konto einmalig über die
+    // Oberfläche angelegt werden. Kein Passwort in Konfiguration, Umgebung oder Log.
+    static readonly SemaphoreSlim SetupLock = new(1, 1);
+
+    public static void LogSetupState(AppDb db, ILogger log)
     {
         if (!db.Users.Any())
-        {
-            var name = (cfg["Admin:Benutzer"] ?? "admin").Trim().ToLowerInvariant();
-            var pw = cfg["Admin:Passwort"];
-            var generated = string.IsNullOrWhiteSpace(pw);
-            if (generated) pw = Passwords.Generate();
-            db.Users.Add(new User { UserName = name, DisplayName = cfg["Admin:Name"] ?? name, PasswordHash = Passwords.Hash(pw!), IsAdmin = true });
-            db.SaveChanges();
-            if (generated)
-                log.LogWarning("Erstes Admin-Konto angelegt: Benutzer \"{User}\", Passwort \"{Password}\" – bitte nach der ersten Anmeldung ändern.", name, pw);
-            else log.LogInformation("Erstes Admin-Konto \"{User}\" aus der Konfiguration angelegt.", name);
-        }
-        // Bestand ohne Besitzer (aus der Zeit vor der Anmeldung) dem ersten Admin zuordnen
-        var admin = db.Users.Where(u => u.IsAdmin).OrderBy(u => u.Id).First();
+            log.LogWarning("Noch kein Konto vorhanden – das erste Admin-Konto bitte JETZT über die Anmeldeseite anlegen (Ersteinrichtung).");
+        else AssignOrphans(db, log);
+    }
+
+    /// <summary>Bestand ohne Besitzer (aus der Zeit vor der Anmeldung) dem ersten Admin zuordnen</summary>
+    static void AssignOrphans(AppDb db, ILogger log)
+    {
+        var admin = db.Users.Where(u => u.IsAdmin).OrderBy(u => u.Id).FirstOrDefault();
+        if (admin == null) return;
         var n = db.Quizzes.Where(q => q.OwnerId == null).ExecuteUpdate(s => s.SetProperty(q => q.OwnerId, admin.Id))
               + db.GameSessions.Where(q => q.OwnerId == null).ExecuteUpdate(s => s.SetProperty(q => q.OwnerId, admin.Id))
               + db.DirectPolls.Where(q => q.OwnerId == null).ExecuteUpdate(s => s.SetProperty(q => q.OwnerId, admin.Id));
@@ -93,6 +93,31 @@ public static class AuthApi
             await db.SaveChangesAsync();
             await SignIn(ctx, user);
             return Results.Ok(Me(user));
+        });
+
+        api.MapGet("/auth/setup", async (AppDb db) => Results.Ok(new { needed = !await db.Users.AnyAsync() }));
+
+        api.MapPost("/auth/setup", async (InviteAccept req, AppDb db, HttpContext ctx, ILogger<AppDb> log) =>
+        {
+            await SetupLock.WaitAsync();
+            try
+            {
+                if (await db.Users.AnyAsync())
+                    return Results.Json(new { error = "Podium ist bereits eingerichtet – bitte anmelden." }, statusCode: 409);
+                var name = (req.UserName ?? "").Trim().ToLowerInvariant();
+                if (CheckUserName(name) is { } nerr) return Results.BadRequest(new { error = nerr });
+                if (Passwords.Check(req.Password) is { } err) return Results.BadRequest(new { error = err });
+                var user = new User { UserName = name, DisplayName = string.IsNullOrWhiteSpace(req.DisplayName) ? name : req.DisplayName.Trim(),
+                    PasswordHash = Passwords.Hash(req.Password!), IsAdmin = true, LastLoginUtc = DateTime.UtcNow };
+                db.Users.Add(user);
+                await db.SaveChangesAsync();
+                log.LogInformation("Ersteinrichtung: Admin-Konto \"{User}\" angelegt (von {Ip}).", name, ctx.Connection.RemoteIpAddress);
+                AssignOrphans(db, log);
+                Seed.EnsureDemo(db, user.Id);
+                await SignIn(ctx, user);
+                return Results.Ok(Me(user));
+            }
+            finally { SetupLock.Release(); }
         });
 
         api.MapPost("/auth/logout", async (HttpContext ctx) => { await ctx.SignOutAsync(); return Results.NoContent(); });
@@ -213,8 +238,7 @@ public static class AuthApi
             else
             {
                 var name = (req.UserName ?? "").Trim().ToLowerInvariant();
-                if (!System.Text.RegularExpressions.Regex.IsMatch(name, "^[a-z0-9._-]{2,40}$"))
-                    return Results.BadRequest(new { error = "Benutzername: 2–40 Zeichen, nur a–z, 0–9, Punkt, Bindestrich, Unterstrich." });
+                if (CheckUserName(name) is { } nerr) return Results.BadRequest(new { error = nerr });
                 if (await db.Users.AnyAsync(u => u.UserName == name)) return Results.BadRequest(new { error = "Diesen Benutzernamen gibt es schon." });
                 user = new User { UserName = name, DisplayName = string.IsNullOrWhiteSpace(req.DisplayName) ? name : req.DisplayName.Trim(), PasswordHash = Passwords.Hash(req.Password!), IsAdmin = inv.IsAdmin };
                 db.Users.Add(user);
@@ -229,7 +253,10 @@ public static class AuthApi
         });
     }
 
-    static readonly string Dummy = Passwords.Hash(Guid.NewGuid().ToString());
+    static string? CheckUserName(string name) => System.Text.RegularExpressions.Regex.IsMatch(name, "^[a-z0-9._-]{2,40}$") ? null
+        : "Benutzername: 2–40 Zeichen, nur a–z, 0–9, Punkt, Bindestrich, Unterstrich.";
+
+    static readonly string Dummy =Passwords.Hash(Guid.NewGuid().ToString());
 
     static object Me(User u) => new { u.Id, u.UserName, u.DisplayName, u.IsAdmin };
 

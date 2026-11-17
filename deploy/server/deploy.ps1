@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Podium auf liebler.iui.hs-osnabrueck.de ausrollen: Oberfläche bauen (Vite, Single-File), self-contained Linux-Build,
     Kit und Archiv hochladen, auf dem Server mit sudo einspielen (vorige Version bleibt als Rückweg, Datenbank-Sicherung

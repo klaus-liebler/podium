@@ -1,6 +1,6 @@
 # Podium (Live-Quiz) als systemd-Dienst – Ziel: /etc/systemd/system/podium.service (schritte/einrichten.sh)
 # Self-contained Linux-Build in /opt/podium (kein .NET auf dem Server nötig), Daten getrennt in /var/lib/podium.
-# Geheimnisse (Admin__Passwort …) stehen nur in /etc/podium/podium.env (root:podium, 0640), nie im Repository.
+# Abweichungen/Geheimnisse stehen nur in /etc/podium/podium.env (root:podium, 0640), nie im Repository.
 [Unit]
 Description=Podium Live-Quiz
 After=network-online.target

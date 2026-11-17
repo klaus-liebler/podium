@@ -38,10 +38,9 @@ var app = builder.Build();
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDb>();
-    var fresh = db.Database.EnsureCreated();
+    db.Database.EnsureCreated();
     db.EnsureSchemaUpgrades();
-    AuthApi.EnsureAdmin(db, app.Configuration, app.Logger);
-    if (fresh) Seed.EnsureDemo(db, db.Users.OrderBy(u => u.Id).First().Id);
+    AuthApi.LogSetupState(db, app.Logger);   // erstes Admin-Konto legt man in der Oberfläche an (Ersteinrichtung)
 }
 
 app.UseForwardedHeaders();

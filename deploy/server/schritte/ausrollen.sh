@@ -44,8 +44,8 @@ systemctl start podium
 if gesund 60; then
     ok "neue Version läuft · $(curl -fsS "$GESUND")"
     rm -f "$archiv"
-    if journalctl -u podium --since "@$start" --no-pager -o cat | grep -q "Erstes Admin-Konto angelegt"; then
-        warn "Erstes Admin-Konto wurde angelegt – Zugangsdaten: sudo journalctl -u podium | grep 'Erstes Admin-Konto'"
+    if curl -fsS "${GESUND%/gesund}/api/auth/setup" | grep -q '"needed":true'; then
+        warn "Noch kein Konto – JETZT https://liebler.iui.hs-osnabrueck.de/podium/ öffnen und das Admin-Konto anlegen (Ersteinrichtung)"
     fi
 else
     warn "neue Version antwortet nicht – zurück zur vorigen"

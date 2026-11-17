@@ -19,7 +19,7 @@ Live-Quiz mit Leinwand (3D-Welt, Musik), Handy-Teilnahme per QR-Code, Dozentenbe
 ```powershell
 cd web; npm install; npm run build   # baut die Oberfläche nach ../wwwroot (index.html + index.html.br)
 cd ..; dotnet run                    # http://localhost:5158 – lauscht auf allen Netzwerkschnittstellen
-                                     # erster Start: Admin-Konto + Passwort stehen in der Konsole
+                                     # erster Aufruf: Ersteinrichtung legt das Admin-Konto an
 ```
 
 Handys müssen den Rechner im selben Netz erreichen (ggf. Windows-Firewall für Port 5158 freigeben).
@@ -47,8 +47,8 @@ Entwicklung mit Hot-Reload: Backend per `dotnet run` starten, dann `cd web; npm 
 ## Anmeldung
 
 Dozierende melden sich mit eigenem Konto an (PBKDF2-Hash, Cookie, Sperre nach Fehlversuchen); jede·r sieht nur die eigenen
-Quizze. Beim ersten Start entsteht ein Admin-Konto (`Admin__Benutzer`, `Admin__Name`, optional `Admin__Passwort`; sonst
-wird ein Passwort erzeugt und ins Log geschrieben). Weitere Konten per **Einladungslink** (👥 Benutzer), Passwort vergessen
+Quizze. Solange die Datenbank kein Konto enthält, zeigt die Anmeldeseite die **Ersteinrichtung**: Dort legt man
+einmalig das Admin-Konto an (wie bei evcc, kein Passwort in Konfiguration oder Log). Weitere Konten per **Einladungslink** (👥 Benutzer), Passwort vergessen
 per **Passwort-Link**. Studierende brauchen keine Anmeldung.
 
 Betrieb unter einem Unterpfad: `PathBase=/podium`, `PublicBaseUrl=https://…/podium`. Server-Bereitstellung: [deploy/README.md](deploy/README.md).

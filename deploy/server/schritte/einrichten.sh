@@ -30,7 +30,7 @@ install -d -o podium -g podium -m 0750 /var/lib/podium /var/lib/podium/schluesse
 install -d -o root   -g podium -m 0750 /etc/podium
 if [[ ! -f /etc/podium/podium.env ]]; then
     install -o root -g podium -m 0640 "$KIT/podium.env.beispiel" /etc/podium/podium.env
-    ok "/etc/podium/podium.env angelegt – erstes Admin-Konto dort festlegen (nie ins Repository)"
+    ok "/etc/podium/podium.env angelegt (nie ins Repository)"
 fi
 
 # ---------- systemd

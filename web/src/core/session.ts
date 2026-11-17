@@ -19,7 +19,7 @@ export async function api<T = unknown>(path: string, init: RequestInit & { json?
 		headers: { ...(json !== undefined ? { "Content-Type": "application/json" } : {}), ...(rest.headers ?? {}) },
 		body: json !== undefined ? JSON.stringify(json) : rest.body,
 	});
-	if (r.status === 401 && !path.startsWith("auth/login") && !path.startsWith("invite/")) {
+	if (r.status === 401 && !path.startsWith("auth/login") && !path.startsWith("auth/setup") && !path.startsWith("invite/")) {
 		me = null;
 		toLogin();
 		throw new ApiError(401, "Bitte anmelden.");

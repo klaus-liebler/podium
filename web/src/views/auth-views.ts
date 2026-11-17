@@ -19,26 +19,52 @@ export class LoginView extends LightElement {
 	@property() next = "#/";
 	@state() private error = "";
 	@state() private busy = false;
+	/** Ersteinrichtung: Datenbank enthält noch kein Konto -> erstes Admin-Konto anlegen */
+	@state() private setup = false;
 
 	override connectedCallback() {
 		super.connectedCallback();
 		document.body.className = "teacher"; document.title = "Podium – Anmeldung";
 		void getMe(true).then(m => { if (m) location.hash = this.next; });
+		void api<{ needed: boolean }>("auth/setup").then(s => {
+			this.setup = s.needed;
+			if (s.needed) document.title = "Podium – Ersteinrichtung";
+		}).catch(() => { });
 	}
 	override firstUpdated() { this.querySelector<HTMLInputElement>("#user")?.focus(); }
+	override updated(changed: Map<string, unknown>) { if (changed.has("setup")) this.querySelector<HTMLInputElement>("#user")?.focus(); }
 
 	private async submit(e: Event) {
 		e.preventDefault();
+		if (this.setup && val(this, "pw") !== val(this, "pw2")) { this.error = "Die beiden Passwörter stimmen nicht überein."; return; }
 		this.busy = true; this.error = "";
 		try {
-			const m = await api<Me>("auth/login", { method: "POST", json: { userName: val(this, "user"), password: val(this, "pw") } });
+			const m = this.setup
+				? await api<Me>("auth/setup", { method: "POST", json: { userName: val(this, "user"), displayName: val(this, "name"), password: val(this, "pw") } })
+				: await api<Me>("auth/login", { method: "POST", json: { userName: val(this, "user"), password: val(this, "pw") } });
 			setMe(m);
 			location.hash = this.next || "#/";
-		} catch (err) { this.error = (err as Error).message; }
+		} catch (err) {
+			this.error = (err as Error).message;
+			if ((err as ApiError).status === 409) this.setup = false;   // jemand anderes war schneller
+		}
 		finally { this.busy = false; }
 	}
 
 	protected override render() {
+		if (this.setup) return html`<div class="auth-page">
+			<form class="box auth-box" @submit=${(e: Event) => this.submit(e)}>
+				<h1>Podium</h1>
+				<p><b>Ersteinrichtung</b> – es gibt noch kein Konto. Legen Sie jetzt das Administrator-Konto an.
+					Das geht nur dieses eine Mal; weitere Konten entstehen danach per Einladungslink.</p>
+				${this.error ? html`<div class="msg err" role="alert">${this.error}</div>` : nothing}
+				<label class="field"><span>Benutzername (a–z, 0–9, . _ -)</span><input type="text" id="user" autocomplete="username" required pattern="[a-zA-Z0-9._\\-]{2,40}"></label>
+				<label class="field"><span>Anzeigename</span><input type="text" id="name" autocomplete="name" placeholder="z. B. Prof. Erika Muster"></label>
+				<label class="field"><span>Passwort (mindestens 10 Zeichen)</span><input type="password" id="pw" autocomplete="new-password" minlength="10" required></label>
+				<label class="field"><span>Passwort wiederholen</span><input type="password" id="pw2" autocomplete="new-password" minlength="10" required></label>
+				<button class="primary" type="submit" ?disabled=${this.busy}>Admin-Konto anlegen</button>
+			</form>
+		</div>`;
 		return html`<div class="auth-page">
 			<form class="box auth-box" @submit=${(e: Event) => this.submit(e)}>
 				<h1>Podium</h1>

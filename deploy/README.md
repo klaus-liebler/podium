@@ -33,14 +33,10 @@ bei Fehler zurück).
 **Wichtig:** Dieselbe Zeile dauerhaft in `vibevhs/deploy/server/nginx/liebler.conf` übernehmen – sonst entfernt ein
 erneuter VibeVHS-Schritt 03 sie wieder.
 
-**Erstes Admin-Konto** vor dem ersten Start festlegen (sonst erzeugt Podium ein Passwort und schreibt es ins Journal):
-
-```bash
-sudo nano /etc/podium/podium.env      # Admin__Benutzer, Admin__Name, Admin__Passwort (mind. 10 Zeichen)
-```
-
-Nach der ersten Anmeldung das Passwort unter „👤 Mein Konto“ ändern und `Admin__Passwort` wieder aus der Datei löschen
-(es wird nur beim allerersten Start benutzt).
+**Erstes Admin-Konto:** Kein Passwort in `podium.env`. Solange die Datenbank kein Konto enthält, zeigt
+`https://liebler.iui.hs-osnabrueck.de/podium/` die **Ersteinrichtung** – dort einmalig Benutzername und Passwort des
+Admin-Kontos festlegen (wie bei evcc). Danach ist die Ersteinrichtung gesperrt. Weil bis dahin jede·r mit Zugang zur Seite
+das Konto anlegen könnte: **direkt nach dem ersten Ausrollen** erledigen (`ausrollen.sh` erinnert daran).
 
 ## 3 · Ausrollen (jetzt und bei jedem Update)
 
