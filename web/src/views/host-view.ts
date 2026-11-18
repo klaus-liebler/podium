@@ -10,6 +10,9 @@ import { confetti } from "../core/confetti.ts";
 import { sound, type Track } from "../audio/engine.ts";
 import { THEMES, createStage, type Stage, type ThemeId } from "../three/stage.ts";
 import type { DirectSpec, HostDirect, HostPlayer, HostQuestion, HostState, Phase } from "../core/types.ts";
+import { api } from "../core/session.ts";
+import { resolveMusic, type MusicConfig } from "../audio/music-config.ts";
+import { PreviewSim } from "./preview-sim.ts";
 import "./direct-results.ts";
 import "./direct-composer.ts";
 
@@ -20,6 +23,9 @@ const ROW = 100;
 export class HostView extends LightElement {
 	@property() pin = "";
 	@property() hostKey = "";
+	/** Szenen-Vorschau (Admin): Id der 3D-Welt; spielt eine Runde lokal mit Beispielteilnehmenden durch */
+	@property() preview = "";
+	private sim: PreviewSim | null = null;
 	@state() private s: HostState | null = null;
 	@state() private unlocked = false;
 	@state() private track: Track | null = null;
@@ -43,24 +49,41 @@ export class HostView extends LightElement {
 		sound.onTrack = t => { this.track = t; };
 		window.addEventListener("keydown", this.onKey);
 		this.connect();
+		void this.loadMusic();
+	}
+	/** Musikauswahl des Kontos (Musikmanager) laden: Leinwand über den Host-Schlüssel, Vorschau über die Anmeldung */
+	private async loadMusic() {
+		try {
+			const cfg = this.preview ? await api<MusicConfig>("music")
+				: await fetch(`api/games/${encodeURIComponent(this.pin)}/music?key=${encodeURIComponent(this.hostKey)}`).then(r => r.ok ? r.json() as Promise<MusicConfig> : null);
+			if (cfg) sound.setCustom(await resolveMusic(cfg));
+		} catch { /* ohne eigene Auswahl: Standardmusik */ }
 	}
 	override disconnectedCallback() {
 		super.disconnectedCallback();
 		window.removeEventListener("keydown", this.onKey);
 		this.timers.clear();
 		void this.conn?.stop();
+		this.sim?.stop();
+		sound.setCustom({});
 		sound.mood(null); sound.stopClock(); sound.stopSting(0.5);
 	}
 
 	protected override firstUpdated() {
 		const canvas = this.querySelector<HTMLCanvasElement>("#stage")!;
 		this.stage = new URLSearchParams(location.search).get("3d") === "0" ? null : createStage(canvas);
-		if (this.stage) { this.stage.onPlayerClick = id => this.kick(id); sound.setTheme(this.stage.theme.id); }
+		if (this.stage) {
+			this.stage.onPlayerClick = id => this.kick(id);
+			if (this.preview) (window as unknown as { podiumStage?: Stage }).podiumStage = this.stage; // Vorschau: zum Nachsehen in der Konsole
+			if (this.preview && THEMES.some(t => t.id === this.preview)) void this.stage.setTheme(this.preview as ThemeId, false, false).then(() => { this.bodyClass(); this.requestUpdate(); });
+			sound.setTheme(this.preview || this.stage.theme.id);
+		}
 		else canvas.remove();
 		this.requestUpdate();
 	}
 
 	private connect() {
+		if (this.preview) { this.sim = new PreviewSim(s => void this.onState(s)); this.sim.start(); return; }
 		if (!this.pin || !this.hostKey) { this.error = "Kein Spiel angegeben."; return; }
 		const c = this.conn = connectHub();
 		c.on("state", (s: HostState) => void this.onState(s));
@@ -68,18 +91,23 @@ export class HostView extends LightElement {
 		c.start().then(() => c.invoke("HostConnect", this.pin, this.hostKey)).catch(e => { this.error = "Verbindung fehlgeschlagen: " + (e as Error).message; });
 	}
 
-	private next = () => void this.conn?.invoke("HostNext", this.pin, this.hostKey);
-	private finish = () => { if (confirm("Quiz jetzt beenden und zur Siegerehrung springen?")) void this.conn?.invoke("HostFinish", this.pin, this.hostKey); };
+	/** Hub-Aufruf – in der Vorschau an den lokalen Simulator */
+	private call<T = unknown>(method: string, ...args: unknown[]): Promise<T> {
+		if (this.sim) return Promise.resolve(this.sim.invoke(method, ...args) as T);
+		return this.conn ? this.conn.invoke<T>(method, this.pin, this.hostKey, ...args) : Promise.resolve(undefined as T);
+	}
+	private next = () => void this.call("HostNext");
+	private finish = () => { if (confirm("Quiz jetzt beenden und zur Siegerehrung springen?")) void this.call("HostFinish"); };
 	/** Raum schließen und zurück zur Übersicht (Handys sehen „Runde beendet“) */
 	private close = async () => {
 		const n = this.s?.players.length ?? 0;
 		if (n > 0 && this.s?.phase !== "final" && !confirm(`Runde beenden? ${n === 1 ? "Eine Person ist noch verbunden und wird" : `${n} Personen sind noch verbunden und werden`} getrennt.`)) return;
-		try { await this.conn?.invoke("HostClose", this.pin, this.hostKey); } catch { /* Raum evtl. schon weg */ }
+		try { await this.call("HostClose"); } catch { /* Raum evtl. schon weg */ }
 		location.hash = "#/";
 	};
 	private kick(id: string) {
 		const p = this.s?.players.find(x => x.id === id);
-		if (p && confirm(`„${p.nick}“ aus dem Spiel entfernen?`)) void this.conn?.invoke("HostKick", this.pin, this.hostKey, id);
+		if (p && confirm(`„${p.nick}“ aus dem Spiel entfernen?`)) void this.call("HostKick", id);
 	}
 	private onKey = (e: KeyboardEvent) => {
 		if ((e.target as HTMLElement).matches?.("input,textarea")) return;
@@ -93,17 +121,22 @@ export class HostView extends LightElement {
 	private canDirect() { return !!this.s && ["lobby", "reveal", "scoreboard", "final", "direct"].includes(this.s.phase); }
 	private openComposer() { this.composerError = ""; this.composer = true; }
 	private async submitDirect(spec: DirectSpec) {
-		const err = await this.conn?.invoke<string | null>("HostDirectStart", this.pin, this.hostKey, spec);
+		const err = await this.call<string | null>("HostDirectStart", spec);
 		if (err) { this.composerError = err; return; }
 		this.composer = false;
 	}
-	private directLive = (live: boolean) => void this.conn?.invoke("HostDirectLive", this.pin, this.hostKey, live);
-	private directClose = () => void this.conn?.invoke("HostDirectClose", this.pin, this.hostKey);
-	private directEnd = () => void this.conn?.invoke("HostDirectEnd", this.pin, this.hostKey);
+	private directLive = (live: boolean) => void this.call("HostDirectLive", live);
+	private directClose = () => void this.call("HostDirectClose");
+	private directEnd = () => void this.call("HostDirectEnd");
 	private async changeTheme(id: ThemeId) {
 		sound.setTheme(id);
-		await this.stage?.setTheme(id);
+		await this.stage?.setTheme(id, false, !this.preview);
+		this.bodyClass();
 		this.requestUpdate();
+	}
+	/** body-Klassen: Phase, 3D, ruhige Welt (dann auch keine CSS-Animationen) */
+	private bodyClass() {
+		document.body.className = `host ph-${this.s?.phase ?? "lobby"}${this.stage ? " has3d" : ""}${this.stage?.theme.calm ? " calm" : ""}`;
 	}
 	private toggleMute() { sound.setMuted(!sound.muted); this.muted = sound.muted; }
 	private toggleFull() { if (document.fullscreenElement) void document.exitFullscreen(); else void document.documentElement.requestFullscreen(); }
@@ -113,10 +146,11 @@ export class HostView extends LightElement {
 		if (!this.unlocked) return;
 		if (phase !== "podium") sound.stopSting();
 		switch (phase) {
-			case "lobby": case "final": case "direct": sound.mood("lobby"); break;
+			case "lobby": case "direct": sound.mood("lobby"); break;
+			case "final": sound.mood("reveal"); break;
 			case "intro": sound.mood("question", { force: !initial, fade: 0.8 }); break;
 			case "answering": sound.mood("question"); break;
-			case "scoreboard": sound.mood("celebrate"); break;
+			case "scoreboard": sound.mood("reveal"); break;
 		}
 	}
 
@@ -142,7 +176,8 @@ export class HostView extends LightElement {
 		this.prevIds = new Set(s.players.map(p => p.id));
 		this.timers.clear();
 		this.song = ""; this.songGen++;
-		document.body.className = `host ph-${s.phase}${this.stage ? " has3d" : ""}`;
+		this.bodyClass();
+		if (s.phase === "intro" && !this.preview) void this.loadMusic(); // geänderte Musikauswahl gilt ab der nächsten Frage
 		this.stage?.setMode(s.phase);
 		this.applyMusic(s.phase);
 		await this.updateComplete; // DOM der neuen Phase steht
@@ -198,7 +233,7 @@ export class HostView extends LightElement {
 			sound.tapeStop();
 			sound.gong();
 			this.timers.later(900, () => sound.chime());
-			this.timers.later(2200, () => sound.mood("lobby", { fade: 2.5 }));
+			this.timers.later(2200, () => sound.mood("reveal", { fade: 2.5 }));
 		}
 		this.timers.raf(() => this.timers.raf(() => this.querySelectorAll<HTMLElement>(".chart .bar").forEach(b => { b.style.height = `calc((100% - 110px) * ${Number(b.dataset.h) / 100})`; })));
 		const pct = s.answeredCount ? s.correctCount / s.answeredCount : 0;
@@ -324,9 +359,19 @@ export class HostView extends LightElement {
 				: s ? keyed(this.shownKey || s.phase, this.renderPhase(s)) : nothing}
 			</main>
 			<div class="host-controls">${s ? this.renderControls(s) : nothing}</div>
+			${this.preview ? this.previewBar() : nothing}
 			${this.composer ? html`<direct-composer .error=${this.composerError}
 				@direct-submit=${(e: CustomEvent<DirectSpec>) => this.submitDirect(e.detail)} @direct-cancel=${() => { this.composer = false; }}></direct-composer>` : nothing}
 			${this.unlocked || this.error ? nothing : html`<div class="unlock"><button class="btn primary big" @click=${() => this.unlock()}>▶ Leinwand starten</button></div>`}`;
+	}
+
+	private previewBar() {
+		const jump: [Phase, string][] = [["lobby", "Warteraum"], ["intro", "Frage"], ["answering", "Antwortzeit"], ["reveal", "Lösung"], ["scoreboard", "Zwischenstand"], ["podium", "Siegerehrung"], ["final", "Statistik"]];
+		return html`<nav class="preview-bar" aria-label="Vorschau">
+			<b>Vorschau</b>
+			${jump.map(([ph, label]) => html`<button class=${this.s?.phase === ph ? "on" : ""} @click=${() => this.sim?.go(ph)}>${label}</button>`)}
+			<a href="#/" class="end">✕ Beenden</a>
+		</nav>`;
 	}
 
 	private renderControls(s: HostState): TemplateResult | typeof nothing {

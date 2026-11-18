@@ -70,11 +70,12 @@ export const studio: ThemeDef = {
 		const tr = truss(20); tr.position.set(0, 7, -3.2); g.add(tr);
 		for (const x of [-10, 10]) { const post = truss(7); post.rotation.z = Math.PI / 2; post.position.set(x, 3.5, -3.2); g.add(post); }
 		const tr2 = truss(16); tr2.position.set(0, 6.2, 3.5); g.add(tr2);
-		const heads: { pivot: Group; beam: ReturnType<typeof beam>; phase: number; x: number }[] = [];
+		const heads: { pivot: Group; beam: ReturnType<typeof beam>; phase: number; x: number; a?: number }[] = [];
 		const beamColors = [0xff4fd8, 0x4fd8ff, 0xffd84f, 0x7c5cff, 0x4fffb0, 0xff7a4f];
 		const xs = [-8, -4.8, -1.6, 1.6, 4.8, 8];
 		xs.forEach((x, i) => {
-			const pivot = new Group(); pivot.position.set(x, 6.85, -3.0); g.add(pivot);
+			// Lichtkegel reichen bis zum Boden – sie dürfen nicht als Hindernis für die Figuren gelten
+			const pivot = new Group(); pivot.position.set(x, 6.85, -3.0); pivot.userData.noCollide = true; g.add(pivot);
 			const body = new Mesh(new CylinderGeometry(0.16, 0.2, 0.35, 12), new MeshStandardMaterial({ color: 0x1b1b24, metalness: 0.7, roughness: 0.3 }));
 			body.position.y = -0.15; pivot.add(body);
 			const b = beam(beamColors[i], 9, 1.35); b.mesh.position.y = -0.3; pivot.add(b.mesh);
@@ -128,11 +129,13 @@ export const studio: ThemeDef = {
 		return {
 			group: g,
 			update(dt, st) {
-				const speed = 0.45 + (st.mode === "answering" ? st.tension * 1.6 : 0) + (st.mode === "podium" ? 0.3 : 0);
+				// ruhiges Schwenken; zum Ende der Antwortzeit nur leicht schneller
+				const speed = 0.13 + (st.mode === "answering" ? st.tension * 0.3 : 0) + (st.mode === "podium" ? 0.05 : 0);
 				heads.forEach((h, i) => {
-					const a = st.t * speed + h.phase;
-					if (st.mode === "podium" && flash > 0.05) { h.pivot.rotation.z += ((h.x > 0 ? 0.35 : -0.35) * Math.min(1, Math.abs(h.x) / 6) - h.pivot.rotation.z) * 0.1; h.pivot.rotation.x += (0.35 - h.pivot.rotation.x) * 0.1; }
-					else { h.pivot.rotation.z = Math.sin(a) * 0.55; h.pivot.rotation.x = 0.35 + Math.cos(a * 0.8) * 0.3; }
+					h.a = (h.a ?? h.phase) + dt * speed; const a = h.a; // Phase integrieren: Tempowechsel ohne Sprung
+					const k = Math.min(1, dt * 1.5);
+					if (st.mode === "podium" && flash > 0.05) { h.pivot.rotation.z += ((h.x > 0 ? 0.35 : -0.35) * Math.min(1, Math.abs(h.x) / 6) - h.pivot.rotation.z) * k; h.pivot.rotation.x += (0.35 - h.pivot.rotation.x) * k; }
+					else { h.pivot.rotation.z += (Math.sin(a) * 0.5 - h.pivot.rotation.z) * k; h.pivot.rotation.x += (0.35 + Math.cos(a * 0.8) * 0.25 - h.pivot.rotation.x) * k; }
 					const hot = st.mode === "answering" ? st.tension : 0;
 					h.beam.setColor(new Color(beamColors[i]).lerp(new Color(0xff2a4a), hot * hot));
 					h.beam.setIntensity((st.mode === "podium" ? 0.3 : 0.45) + st.pulse * 0.3 + flash * 0.3);

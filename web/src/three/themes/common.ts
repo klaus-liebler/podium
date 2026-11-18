@@ -1,10 +1,10 @@
 // Gemeinsame Bausteine der 3D-Welten.
 import {
-	AdditiveBlending, BackSide, BufferAttribute, BufferGeometry, CanvasTexture, Color, ConeGeometry, DoubleSide, Group, Mesh,
+	AdditiveBlending, BackSide, Box3, BufferAttribute, BufferGeometry, CanvasTexture, Color, ConeGeometry, DoubleSide, Group, Mesh,
 	Points, PointsMaterial, ShaderMaterial, SphereGeometry, SRGBColorSpace, Vector3, type Object3D, type Scene, type WebGLRenderer,
 } from "three";
 
-export type ThemeId = "studio" | "campus" | "space" | "stadium" | "nature" | "osnabrueck";
+export type ThemeId = "studio" | "campus" | "space" | "stadium" | "nature" | "osnabrueck" | "calm";
 export interface Cam { pos: [number, number, number]; look: [number, number, number]; fov: number; }
 export interface Spot { x: number; z: number; ry: number; }
 export interface ThemeState { mode: string; tension: number; pulse: number; t: number; }
@@ -31,6 +31,8 @@ export interface ThemeDef {
 	bloom: number; exposure: number;
 	/** Sprunghöhe-Faktor (Mond: höher) */
 	hop?: number;
+	/** Ruhige Welt (z. B. Grundschule, neurodivergente Kinder): nichts bewegt sich, Figuren stehen fest, kein Konfetti/Feuerwerk */
+	calm?: boolean;
 	build(ctx: ThemeCtx): Promise<ThemeRuntime>;
 }
 
@@ -42,6 +44,23 @@ export function rng(seed: number) {
 
 export function place<T extends Object3D>(parent: Object3D, o: T, x: number, z: number, ry = 0, s = 1, y = 0): T {
 	o.position.set(x, y, z); o.rotation.y = ry; o.scale.multiplyScalar(s); parent.add(o); return o;
+}
+
+/**
+ * Modell in eine Gruppe packen, deren Ursprung in der Mitte der Grundfläche liegt.
+ * Kenney-Modelle haben ihren Ursprung oft an einer Ecke – gedreht würden sie sonst im Kreis „fahren“.
+ */
+export function centered(o: Object3D): Group {
+	const g = new Group(), b = new Box3().setFromObject(o), c = b.getCenter(new Vector3());
+	o.position.x -= c.x; o.position.z -= c.z;
+	g.add(o);
+	return g;
+}
+
+/** Grundriss eines Objekts als Kreis in der Bodenebene (Weltkoordinaten) */
+export function footprint(o: Object3D) {
+	const b = new Box3().setFromObject(o), s = b.getSize(new Vector3()), c = b.getCenter(new Vector3());
+	return { x: c.x, z: c.z, r: Math.max(s.x, s.z) / 2, h: s.y };
 }
 
 // ---------------------------------------------------------------- Himmel

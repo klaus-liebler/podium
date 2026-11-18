@@ -7,7 +7,11 @@
 //  * Fallback: generativer Lo-Fi, falls keine Musikdateien geladen werden können.
 import { store } from "../core/util.ts";
 
-export type Mood = "lobby" | "question" | "celebrate";
+/** reveal = Lösungsfolie, Zwischenstand und Endstatistik (ohne eigene Auswahl: wie celebrate) */
+export type Mood = "lobby" | "question" | "reveal" | "celebrate";
+/** Abschnitte des Musikmanagers (Auswahl je Konto) */
+export type MusicSlot = "lobby" | "question" | "reveal" | "podium";
+const SLOT_OF: Partial<Record<string, MusicSlot>> = { lobby: "lobby", question: "question", reveal: "reveal", winner: "podium" };
 /** start/end (Sekunden) schneiden einen Ausschnitt aus, z. B. den Höhepunkt einer längeren Fanfare */
 export interface Track { file: string; title: string; author: string; url?: string; start?: number; end?: number; /** Sieger-Song: Ende des Intros in Sekunden (für „Nach Intro ausblenden“) */ introEnd?: number; }
 type Kind = Mood | "tada" | "winner";
@@ -15,6 +19,8 @@ type TrackList = Partial<Record<Kind, Track[]>> & { themes?: Record<string, Part
 
 const mtof = (m: number) => 440 * Math.pow(2, (m - 69) / 12);
 const MUSIC = "music/";
+/** Mitgelieferte Stücke liegen in music/, hochgeladene kommen als Pfad (api/music/f/…) */
+const srcOf = (t: Track) => t.file.includes("/") ? t.file : MUSIC + t.file;
 
 class Deck {
 	readonly audio = new Audio();
@@ -35,14 +41,14 @@ class Deck {
 		if (this.file === track.file) return;
 		this.file = track.file;
 		this.audio.onerror = () => this.e.trackFailed(track, this);
-		this.audio.src = MUSIC + track.file;
+		this.audio.src = srcOf(track);
 		this.audio.load();
 	}
 	play(track: Track, fade: number, level = 1) {
 		const t = this.e.ctx!.currentTime;
 		clearTimeout(this.pauseTimer); clearTimeout(this.endTimer);
 		this.audio.onerror = () => this.e.trackFailed(track, this);
-		if (this.file !== track.file) { this.file = track.file; this.audio.src = MUSIC + track.file; } // schon geladen: weiterverwenden
+		if (this.file !== track.file) { this.file = track.file; this.audio.src = srcOf(track); } // schon geladen: weiterverwenden
 		this.audio.playbackRate = 1;
 		this.audio.preservesPitch = true;
 		const start = track.start ?? 0;
@@ -77,6 +83,8 @@ export class AudioEngine {
 	onTrack: ((t: Track) => void) | null = null;
 
 	private tracks: TrackList | null = null;
+	/** eigene Auswahl aus dem Musikmanager (leer = Standard der Welt) */
+	private custom: Partial<Record<MusicSlot, Track[]>> = {};
 	private pendingMood: Mood | null | undefined;
 	private currentMood: Mood | null = null;
 	private lastFile: Partial<Record<string, string>> = {};
@@ -150,9 +158,22 @@ export class AudioEngine {
 	}
 	private listFor(kind: Kind): Track[] {
 		const ok = (l?: Track[]) => (l ?? []).filter(t => !this.bad.has(t.file));
+		const slot = SLOT_OF[kind], own = slot ? ok(this.custom[slot]) : [];
+		if (own.length) return own;
 		const themed = ok(this.tracks?.themes?.[this.themeId]?.[kind]);
-		return themed.length ? themed : ok(this.tracks?.[kind]);
+		if (themed.length) return themed;
+		const plain = ok(this.tracks?.[kind]);
+		return plain.length || kind !== "reveal" ? plain : this.listFor("celebrate");
 	}
+	/** Musikauswahl des Kontos übernehmen; läuft gerade ein betroffener Abschnitt, wechselt das Stück sanft */
+	setCustom(c: Partial<Record<MusicSlot, Track[]>>) {
+		this.custom = c;
+		if (this.tracks) this.preloadSting("winner");
+		const m = this.currentMood;
+		if (m && m !== "celebrate" && c[m as MusicSlot]?.length) this.mood(m, { force: true, fade: 1.5 });
+	}
+	/** Gibt es für den Abschnitt eine eigene Auswahl? */
+	hasCustom(slot: MusicSlot) { return !!this.custom[slot]?.length; }
 	private pick(list: Track[] | undefined, key: string): Track | null {
 		if (!list?.length) return null;
 		let choices = list.filter(t => t.file !== this.lastFile[key]);
@@ -362,7 +383,7 @@ class LofiSynth {
 	start(mood: Mood) {
 		const e = this.e, ctx = e.ctx!;
 		if (mood === "question") { this.bpm = 86; this.prog = [[38, [53, 57, 60, 64]], [46, [57, 60, 62, 65]], [43, [53, 57, 58, 62]], [45, [55, 57, 62, 64]]]; }
-		else if (mood === "celebrate") { this.bpm = 96; this.prog = [[41, [57, 60, 64, 69]], [43, [59, 62, 64, 67]], [45, [60, 64, 67, 69]], [48, [60, 64, 67, 72]]]; }
+		else if (mood === "celebrate" || mood === "reveal") { this.bpm = 96; this.prog = [[41, [57, 60, 64, 69]], [43, [59, 62, 64, 67]], [45, [60, 64, 67, 69]], [48, [60, 64, 67, 72]]]; }
 		else { this.bpm = 76; this.prog = [[41, [57, 60, 64, 67]], [40, [55, 59, 62, 64]], [38, [53, 57, 60, 64]], [46, [57, 60, 62, 65]]]; }
 		if (this.timer) return;
 		this.bus = ctx.createGain(); this.bus.gain.value = 0.9; this.bus.connect(e.musicIn);

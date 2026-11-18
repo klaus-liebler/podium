@@ -117,7 +117,21 @@ export class Figure {
 	}
 	get anim() { return this.currentName; }
 
-	update(dt: number) { this.mixer?.update(dt); if (this.prop) this.prop.rotation.y += dt * 14; }
+	/** Eingefroren (ruhige Welt): neutrale Pose, keine Animation, kein Propeller */
+	still = false;
+	/** In neutraler Grundpose (Anfang der Leerlauf-Animation) einfrieren – ohne Überblendung, damit keine Zwischenpose hängen bleibt */
+	hold() {
+		this.still = true;
+		const a = this.action("idle"); if (!a || !this.mixer) return;
+		this.mixer.stopAllAction();
+		a.reset(); a.setLoop(LoopRepeat, Infinity); a.enabled = true; a.setEffectiveWeight(1); a.time = 0; a.play();
+		this.current = a; this.currentName = "idle"; this.onceDone = null;
+		this.mixer.update(0);
+	}
+	update(dt: number) {
+		if (this.still) return;
+		this.mixer?.update(dt); if (this.prop) this.prop.rotation.y += dt * 14;
+	}
 
 	dispose() {
 		this.root.removeFromParent();

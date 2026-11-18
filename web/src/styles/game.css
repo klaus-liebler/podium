@@ -154,19 +154,30 @@ body.host.has3d .player-cloud { display: none; }
 @keyframes tileIn { from { transform: translateY(40px) scale(.9); opacity: 0; } }
 @keyframes shine { 0%, 60% { transform: translateX(-120%); } 100% { transform: translateX(120%); } }
 .c0 { background: var(--a0); } .c1 { background: var(--a1); } .c2 { background: var(--a2); } .c3 { background: var(--a3); } .c4 { background: var(--a4); } .c5 { background: var(--a5); }
-.tile.dim { opacity: .28; filter: grayscale(.6); }
+/* Falsche Antworten: deckend und gedämpft statt durchscheinend – sonst schlägt der 3D-Hintergrund durch */
+.tile.dim { background: #2b2748; color: rgba(255, 255, 255, .78); box-shadow: inset 0 0 0 2px rgba(255, 255, 255, .14); }
+.tile.dim::before { display: none; }
+.tile.dim .key { background: rgba(255, 255, 255, .1); color: rgba(255, 255, 255, .78); }
+.tile.dim .mark { color: #ff8a9a; }
 .tile.right { animation: rightPulse 1.2s ease-in-out 2; box-shadow: inset 0 -8px 0 rgba(0, 0, 0, .18), 0 0 0 5px #fff, 0 0 40px rgba(255, 255, 255, .6); }
 @keyframes rightPulse { 50% { transform: scale(1.03); } }
 
 /* ---------------------------------------------------------------- Auflösung */
 .reveal { justify-content: flex-start; gap: 2.2vh; }
 .reveal .question-card { font-size: clamp(1.3rem, 2.4vw, 2.4rem); padding: 18px 30px; }
-.chart { flex: 1; width: min(1200px, 90vw); display: flex; align-items: flex-end; justify-content: center; gap: 3vw; min-height: 0; padding-top: 30px; }
+/* Diagramm auf eigenem, fast deckendem Panel: vor jeder 3D-Welt gleich gut lesbar */
+.chart { flex: 1; width: min(1200px, 90vw); display: flex; align-items: flex-end; justify-content: center; gap: 3vw; min-height: 0; padding: 70px 3vw 16px;
+  background: rgba(16, 12, 44, .9); border: 1px solid rgba(255, 255, 255, .16); border-radius: var(--radius); box-shadow: 0 20px 60px rgba(0, 0, 0, .4); }
 .chart .col { flex: 1; max-width: 170px; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 8px; }
-.chart .bar { width: 100%; border-radius: 14px 14px 6px 6px; height: 0; transition: height 1.1s cubic-bezier(.2, 1.1, .3, 1); box-shadow: inset 0 -8px 0 rgba(0, 0, 0, .18); position: relative; }
-.chart .val { font-size: 2rem; font-weight: 700; }
+.chart .bar { width: 100%; min-height: 6px; border-radius: 14px 14px 6px 6px; height: 0; transition: height 1.1s cubic-bezier(.2, 1.1, .3, 1); box-shadow: inset 0 -8px 0 rgba(0, 0, 0, .18), 0 0 0 2px rgba(255, 255, 255, .55); position: relative; }
+.chart .val { font-size: 2rem; font-weight: 700; color: #fff; text-shadow: 0 2px 6px rgba(0, 0, 0, .6); }
 .chart .lbl { width: 2.2em; height: 2.2em; border-radius: 12px; display: grid; place-items: center; font-weight: 700; font-size: 1.3rem; }
-.chart .col.wrong { opacity: .4; }
+/* Falsche Antworten: volle Deckkraft, aber schraffiert und entsättigt; richtige mit weißem Rahmen und Leuchten */
+.chart .col.wrong .bar { filter: saturate(.45) brightness(.85); box-shadow: inset 0 -8px 0 rgba(0, 0, 0, .18), 0 0 0 2px rgba(255, 255, 255, .3);
+  background-image: repeating-linear-gradient(135deg, rgba(0, 0, 0, .28) 0 10px, transparent 10px 20px); }
+.chart .col.wrong .val { color: rgba(255, 255, 255, .8); }
+.chart .col.right .bar { box-shadow: inset 0 -8px 0 rgba(0, 0, 0, .18), 0 0 0 4px #fff, 0 0 28px rgba(255, 255, 255, .55); }
+.stat-row .pill { background: rgba(16, 12, 44, .85); border-color: rgba(255, 255, 255, .2); }
 .chart .col.right .bar::after { content: '✓'; position: absolute; top: -56px; left: 50%; translate: -50% 0; width: 46px; height: 46px; border-radius: 50%; background: #fff; color: var(--ok); font-size: 1.8rem; display: grid; place-items: center; font-weight: 700; animation: bubbleIn .5s 1s both; }
 .stat-row { display: flex; gap: 14px; }
 .stat-row .pill { font-size: 1.3rem; padding: .45em 1.1em; }
@@ -329,3 +340,16 @@ body.host.has3d .player-cloud { display: none; }
 .final .final-actions { margin-top: 14px; flex: none; }
 .screen.final { overflow: hidden; }
 img.portrait { width: 100%; height: 100%; object-fit: contain; display: block; }
+
+/* Szenen-Vorschau (Admin) */
+.preview-bar { position: fixed; z-index: 30; left: 50%; bottom: 14px; translate: -50% 0; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; justify-content: center;
+  padding: 6px 10px; border-radius: 14px; background: rgba(16, 12, 44, .88); border: 1px solid rgba(255, 255, 255, .2); font-size: .9rem; max-width: calc(100vw - 32px); }
+.preview-bar b { color: #ffd84d; margin-right: 4px; }
+.preview-bar button, .preview-bar a { font: inherit; color: #fff; background: rgba(255, 255, 255, .1); border: 1px solid rgba(255, 255, 255, .2); border-radius: 9px; padding: 4px 10px; text-decoration: none; cursor: pointer; }
+.preview-bar button.on { background: #ffd84d; color: #1b1340; border-color: #ffd84d; }
+.preview-bar .end { margin-left: 6px; }
+body.host:has(.preview-bar) .host-controls { bottom: 64px; }
+
+/* Ruhige Bühne: keine Bewegung auf der Oberfläche (Glanz, Pulsieren, Equalizer, Hüpfen), nur sanfte Übergänge */
+body.calm *, body.calm *::before, body.calm *::after { animation: none !important; }
+body.calm .tile::before { display: none; }

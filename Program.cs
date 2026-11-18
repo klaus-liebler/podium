@@ -8,6 +8,7 @@ using Podium.Auth;
 using Podium.Data;
 using Podium.Game;
 using Podium.Import;
+using Podium.Music;
 using QRCoder;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -93,6 +94,7 @@ app.MapGet("/gesund", () => Results.Text($"ok {typeof(Program).Assembly.GetName(
 var api = app.MapGroup("/api");
 api.MapAuth();
 api.MapInvites();
+api.MapMusic(MusicApi.Dir(app.Configuration, dbPath));
 
 // ---------------------------------------------------------------- öffentlich (Leinwand/Handy)
 api.MapGet("/qr", (string data) =>

@@ -14,6 +14,24 @@ public class User
     public bool Active { get; set; } = true;
     public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
     public DateTime? LastLoginUtc { get; set; }
+    /// <summary>Musikauswahl je Spielabschnitt (JSON, siehe Music/MusicApi.cs)</summary>
+    public string MusicJson { get; set; } = "{}";
+}
+
+/// <summary>Eigenes, hochgeladenes Musikstück eines Kontos. Datei liegt unter StoredName im Musikordner.</summary>
+public class MusicUpload
+{
+    public int Id { get; set; }
+    public int OwnerId { get; set; }
+    public string Title { get; set; } = "";
+    public string FileName { get; set; } = "";
+    public string StoredName { get; set; } = "";
+    public long Size { get; set; }
+    /// <summary>optional: Wiedergabe ab Sekunde</summary>
+    public double? StartSec { get; set; }
+    /// <summary>optional (Siegerehrung): Ende des Intros für „Nach dem Intro ausblenden“</summary>
+    public double? IntroEndSec { get; set; }
+    public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
 }
 
 /// <summary>Einmal-Link: Einladung für ein neues Konto oder Zurücksetzen eines Passworts. Gespeichert wird nur der SHA-256 des Tokens.</summary>
@@ -116,6 +134,7 @@ public class AppDb(DbContextOptions<AppDb> options) : DbContext(options)
     public DbSet<GameSession> GameSessions => Set<GameSession>();
     public DbSet<GameSessionPlayer> GameSessionPlayers => Set<GameSessionPlayer>();
     public DbSet<DirectPoll> DirectPolls => Set<DirectPoll>();
+    public DbSet<MusicUpload> MusicUploads => Set<MusicUpload>();
 
     /// <summary>
     /// Alle Zeitpunkte sind UTC. SQLite speichert sie als Text ohne Zeitzone, EF liest sie als DateTimeKind.Unspecified –
@@ -153,6 +172,13 @@ public class AppDb(DbContextOptions<AppDb> options) : DbContext(options)
         Database.ExecuteSqlRaw(@"CREATE UNIQUE INDEX IF NOT EXISTS ""IX_Invites_TokenHash"" ON ""Invites"" (""TokenHash"")");
         foreach (var table in new[] { "Quizzes", "GameSessions", "DirectPolls" })
             if (!HasColumn(table, "OwnerId")) Database.ExecuteSqlRaw($@"ALTER TABLE ""{table}"" ADD COLUMN ""OwnerId"" INTEGER NULL");
+        // Achtung: ExecuteSqlRaw deutet geschweifte Klammern als Platzhalter – daher Vorgabe '' (wird wie {} gelesen)
+        if (!HasColumn("Users", "MusicJson")) Database.ExecuteSqlRaw(@"ALTER TABLE ""Users"" ADD COLUMN ""MusicJson"" TEXT NOT NULL DEFAULT ''");
+        Database.ExecuteSqlRaw(@"CREATE TABLE IF NOT EXISTS ""MusicUploads"" (
+            ""Id"" INTEGER NOT NULL CONSTRAINT ""PK_MusicUploads"" PRIMARY KEY AUTOINCREMENT,
+            ""OwnerId"" INTEGER NOT NULL, ""Title"" TEXT NOT NULL, ""FileName"" TEXT NOT NULL, ""StoredName"" TEXT NOT NULL,
+            ""Size"" INTEGER NOT NULL, ""StartSec"" REAL NULL, ""IntroEndSec"" REAL NULL, ""CreatedUtc"" TEXT NOT NULL)");
+        Database.ExecuteSqlRaw(@"CREATE INDEX IF NOT EXISTS ""IX_MusicUploads_OwnerId"" ON ""MusicUploads"" (""OwnerId"")");
     }
 
     bool HasColumn(string table, string column)
@@ -168,6 +194,7 @@ public class AppDb(DbContextOptions<AppDb> options) : DbContext(options)
     {
         b.Entity<User>().HasIndex(u => u.UserName).IsUnique();
         b.Entity<Invite>().HasIndex(i => i.TokenHash).IsUnique();
+        b.Entity<MusicUpload>().HasIndex(m => m.OwnerId);
         b.Entity<Quiz>().HasMany(q => q.Questions).WithOne().HasForeignKey(q => q.QuizId).OnDelete(DeleteBehavior.Cascade);
         b.Entity<Question>().HasMany(q => q.Options).WithOne().HasForeignKey(o => o.QuestionId).OnDelete(DeleteBehavior.Cascade);
         b.Entity<GameSession>().HasMany(g => g.Players).WithOne().HasForeignKey(p => p.GameSessionId).OnDelete(DeleteBehavior.Cascade);

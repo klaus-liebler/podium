@@ -5,6 +5,8 @@
 //   #/join[/<pin>]     Handy der Studierenden (Ziel des QR-Codes bei Quiz)
 //   #/login · #/invite/<token> · #/account · #/users   Anmeldung und Konten
 //   #/ask/<pin>        anonyme Antwortseite einer Live-Fragerunde (ohne Login/Avatar)
+//   #/music            Musikmanager (Musik je Spielabschnitt, eigene Uploads)
+//   #/preview/<welt>   Szenen-Vorschau (Admin): Leinwand mit 20 Beispielteilnehmenden, ohne echtes Spiel
 import "./styles/game.css";
 import "./styles/player.css";
 import "./styles/teacher.css";
@@ -17,6 +19,7 @@ import "./views/quiz-editor.ts";
 import "./views/host-view.ts";
 import "./views/player-view.ts";
 import "./views/auth-views.ts";
+import "./views/music-view.ts";
 
 @customElement("podium-app")
 export class PodiumApp extends LightElement {
@@ -36,6 +39,8 @@ export class PodiumApp extends LightElement {
 			case "account": return html`<account-view></account-view>`;
 			case "users": return html`<users-view></users-view>`;
 			case "host": return html`<host-view .pin=${parts[1] ?? ""} .hostKey=${parts[2] ?? ""}></host-view>`;
+			case "preview": return html`<host-view .preview=${parts[1] ?? "studio"}></host-view>`;
+			case "music": return html`<music-view></music-view>`;
 			case "join": return html`<player-view .pin=${parts[1] ?? ""}></player-view>`;
 			case "ask": return html`<player-view .pin=${parts[1] ?? ""} .anon=${true}></player-view>`;
 			case "edit": return html`<quiz-editor .quizId=${parts[1] === "new" ? 0 : Number(parts[1] ?? 0)}></quiz-editor>`;

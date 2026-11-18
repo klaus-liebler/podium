@@ -41,7 +41,9 @@ Entwicklung mit Hot-Reload: Backend per `dotnet run` starten, dann `cd web; npm 
 | `web/src/audio/engine.ts` | Musik-Decks mit Crossfade, Stoppuhr-Ticken, Spannungskurve, Fanfaren, Effekte |
 | `web/public/music/` | CC0-/gemeinfreie Musik (`tracks.json` ordnet Stücke den Stimmungen und Welten zu, Quellen in `CREDITS.md`) |
 | `web/public/models/` | CC0-3D-Modelle von Kenney (Figuren, Natur, Stadt, Weltraum, Arena, Möbel) |
-| `web/src/three/themes/` | 3D-Welten: Gameshow-Studio, Campus-Insel, Weltraum-Arena, Stadion, Apfelwiese, Osnabrück |
+| `web/src/three/themes/` | 3D-Welten: Gameshow-Studio, Campus-Insel, Weltraum-Arena, Stadion, Apfelwiese, Osnabrück, Ruhige Bühne (ohne Bewegung, für Grundschule/neurodivergente Kinder) |
+| `Music/MusicApi.cs`, `web/src/views/music-view.ts` | Musikmanager: Musik je Abschnitt (Warteraum, Fragestellung, Lösung & Statistik, Siegerehrung) pro Konto, eigene Uploads (`musik/` neben der Datenbank, Pfad per `MusicPath`) |
+| `web/src/views/preview-sim.ts` | Szenen-Vorschau für Admins: spielt eine Runde mit 20 Beispielteilnehmenden lokal durch |
 | `deploy/` | Bereitstellung auf liebler.iui.hs-osnabrueck.de (systemd, nginx-Schema `liebler.d/`, Sicherung) |
 
 ## Anmeldung
@@ -55,7 +57,7 @@ Betrieb unter einem Unterpfad: `PathBase=/podium`, `PublicBaseUrl=https://…/po
 
 ## Routen (Hash)
 
-`#/` Dozentenbereich · `#/edit/<id>` Editor · `#/host/<pin>/<key>` Leinwand · `#/join/<pin>` Handy · `#/ask/<pin>` anonyme Live-Fragerunde · `#/login` · `#/invite/<token>` · `#/account` · `#/users`
+`#/` Dozentenbereich · `#/edit/<id>` Editor · `#/host/<pin>/<key>` Leinwand · `#/join/<pin>` Handy · `#/ask/<pin>` anonyme Live-Fragerunde · `#/music` Musikmanager · `#/preview/<welt>` Szenen-Vorschau (Admin) · `#/login` · `#/invite/<token>` · `#/account` · `#/users`
 
 ## Leinwand-Tastatur
 
@@ -63,4 +65,4 @@ Leertaste/Enter/→ = weiter · D = Direktfrage · M = Ton · F = Vollbild
 
 ## Lizenz
 
-Code: MIT (siehe `LICENSE`). Musik und 3D-Modelle: CC0 bzw. gemeinfrei (Ausnahme: der mit Suno erstellte Sieger-Song), Nachweise in `web/public/music/CREDITS.md` und `web/public/models/KENNEY-LICENSE.txt`.
+Code: MIT (siehe `LICENSE`). Musik und 3D-Modelle: CC0 bzw. gemeinfrei (Ausnahme: die mit Suno erstellten Stücke für die Siegerehrung), Nachweise in `web/public/music/CREDITS.md` und `web/public/models/KENNEY-LICENSE.txt`.

@@ -71,3 +71,16 @@ body.teacher .tag { font-size: 11px; padding: 1px 6px; border-radius: 99px; back
 body.teacher .tag.off { background: color-mix(in srgb, var(--danger) 15%, transparent); color: var(--danger); }
 body.teacher tr.inactive td { opacity: .55; }
 body.teacher .user-btn { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Musikmanager */
+body.teacher .music-table th.ck, body.teacher .music-table td.ck { text-align: center; width: 112px; }
+body.teacher .music-table td.ck input { width: 20px; height: 20px; cursor: pointer; accent-color: var(--accent); }
+body.teacher .music-table tr.sep td { background: var(--bg); font-weight: 650; font-size: 13px; color: var(--muted); padding-top: 14px; }
+body.teacher .music-table input.title { font: inherit; font-weight: 600; padding: 3px 6px; border: 1px solid transparent; border-radius: 6px; background: transparent; color: var(--text); width: 100%; }
+body.teacher .music-table input.title:hover, body.teacher .music-table input.title:focus { border-color: var(--border); background: var(--surface); }
+body.teacher .music-table input.sec { width: 4.6em; padding: 1px 4px; font-size: 12px; }
+body.teacher .music-table button.play { width: 34px; height: 34px; padding: 0; border-radius: 50%; }
+body.teacher button.link { border: 0; background: none; padding: 0; color: var(--accent); font-size: 12px; text-decoration: underline; }
+body.teacher .small { font-size: 12px; }
+body.teacher label.button.disabled { opacity: .5; pointer-events: none; }
+body.teacher .scene-grid { display: flex; flex-wrap: wrap; gap: 8px; padding: 14px 16px; }

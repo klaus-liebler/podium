@@ -17,11 +17,12 @@ Eine Namensnennung ist nicht erforderlich, wir nennen die Urheber trotzdem gern:
 | apple_cider.mp3 | Apple Cider | Zane Little Music | https://opengameart.org/content/apple-cider |
 | rhythm_factory.mp3 | Rhythm Factory | Zane Little Music | https://opengameart.org/content/rhythm-factory |
 
-## Eigener Sieger-Song (nicht CC0)
+## Eigene Stücke für die Siegerehrung (nicht CC0)
 
 | Datei | Titel | Urheber | Hinweis |
 |---|---|---|---|
-| podium_gehoert_euch.mp3 | Das Podium gehört euch | Klaus Liebler, erstellt mit Suno (suno.com) | Nicht gemeinfrei – Nutzung nach den Suno-Bedingungen des erstellenden Kontos |
+| the_final_fanfare.mp3 | The Final Fanfare (Standard für die Siegerehrung) | Klaus Liebler, erstellt mit Suno (suno.com) | Nicht gemeinfrei – Nutzung nach den Suno-Bedingungen des erstellenden Kontos |
+| podium_gehoert_euch.mp3 | Das Podium gehört euch | Klaus Liebler, erstellt mit Suno (suno.com) | Nicht gemeinfrei – Nutzung nach den Suno-Bedingungen des erstellenden Kontos | Im Musikmanager wählbar.
 
 ## Gemeinfreie Klassik
 

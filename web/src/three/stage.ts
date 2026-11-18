@@ -3,7 +3,7 @@
 //   Lobby: fallen vom Himmel, laufen herum, winken · Quiz: stehen als Publikum, springen beim Antworten, nicken/schütteln beim Auflösen
 //   Siegerehrung: Podest wächst aus dem Boden, Sieger springen auf ihre Plätze und jubeln, das Publikum feiert.
 import {
-	ACESFilmicToneMapping, Box3, CanvasTexture, Clock, Color, DoubleSide, DynamicDrawUsage, Euler, Group, InstancedMesh, Mesh,
+	ACESFilmicToneMapping, Box3, CanvasTexture, Ray, Clock, Color, DoubleSide, DynamicDrawUsage, Euler, Group, InstancedMesh, Mesh,
 	MeshBasicMaterial, MeshStandardMaterial, Object3D, PCFSoftShadowMap, PerspectiveCamera, PlaneGeometry, Raycaster, Scene,
 	SRGBColorSpace, Vector2, Vector3, WebGLRenderer, type Material,
 } from "three";
@@ -20,12 +20,13 @@ import { space } from "./themes/space.ts";
 import { stadium } from "./themes/stadium.ts";
 import { nature, ringsTexture, stump } from "./themes/nature.ts";
 import { osnabrueck } from "./themes/osnabrueck.ts";
+import { calm } from "./themes/calm.ts";
 import type { AvatarSpec, Phase } from "../core/types.ts";
 import { store } from "../core/util.ts";
 
 export type StageMode = Phase;
 export type { ThemeId } from "./themes/common.ts";
-export const THEMES: ThemeDef[] = [studio, campus, space, stadium, nature, osnabrueck];
+export const THEMES: ThemeDef[] = [studio, campus, space, stadium, nature, osnabrueck, calm];
 export interface StagePlayer { id: string; nick: string; avatar: AvatarSpec; answered?: boolean; connected?: boolean; lastCorrect?: boolean; }
 export interface XYZ { x: number; y: number; z: number; }
 
@@ -42,6 +43,8 @@ interface Entry {
 	state: State; target: Vector3 | null; targetRy: number; wait: number;
 	answered: boolean; lastCorrect: boolean; connected: boolean;
 	place: number; flyT: number; flyFrom: Vector3; victoryT: number; seed: number;
+	/** fester Platz (ruhige Welt): bleibt erhalten, auch wenn sich die Reihenfolge der Liste (Rangliste) ändert */
+	slot: number;
 }
 interface Column { obj: Object3D; h: number; x: number; t0: number; up: boolean; }
 interface Conf { p: Vector3; v: Vector3; r: Euler; w: Vector3; life: number; }
@@ -69,6 +72,8 @@ export class Stage {
 	/** Hindernisse der aktuellen Welt (Kreise in der Bodenebene), automatisch aus den Modellen ermittelt */
 	private obstacles: Obstacle[] = [];
 	private static readonly BODY_R = 0.28; // Radius einer Figur
+	/** Ruhige Welt: keine Bewegung, kein Konfetti, feste Kamera, Figuren stehen still */
+	private get calm() { return !!this.theme.calm; }
 
 	constructor(private canvas: HTMLCanvasElement) {
 		const r = this.renderer = new WebGLRenderer({ canvas, antialias: true, powerPreference: "high-performance" });
@@ -99,11 +104,11 @@ export class Stage {
 	}
 
 	// ------------------------------------------------------------ Themes
-	async setTheme(id: ThemeId, initial = false) {
+	async setTheme(id: ThemeId, initial = false, persist = true) {
 		const def = THEMES.find(t => t.id === id) ?? studio;
 		if (!initial && def === this.theme && this.runtime) return;
 		await this.building;
-		this.theme = def; store.set("podium-theme", id);
+		this.theme = def; if (persist) store.set("podium-theme", id);
 		this.building = (async () => {
 			this.runtime?.dispose(); this.runtime = null;
 			this.fireworks.points.removeFromParent();
@@ -167,6 +172,7 @@ export class Stage {
 
 	/** Konfetti-Explosion. Ohne Ursprung: über dem Podest (Siegerehrung) bzw. mitten im Bild. */
 	burst(count = 200, o?: XYZ, power = 1) {
+		if (this.calm) return;
 		const origin = o ? new Vector3(o.x, o.y, o.z) : this.mode === "podium"
 			? new Vector3(this.theme.podium.x, 2.4, this.theme.podium.z)
 			: this.camLook.clone().add(new Vector3(0, 1.4, 0));
@@ -182,6 +188,7 @@ export class Stage {
 		this.pulse(power);
 	}
 	rain(count = 400) {
+		if (this.calm) return;
 		const c = new Vector3(this.theme.podium.x, 0, this.theme.podium.z);
 		for (let k = 0; k < count; k++) {
 			const d = this.confData[this.confNext = (this.confNext + 1) % this.confN];
@@ -192,8 +199,8 @@ export class Stage {
 			d.life = 10;
 		}
 	}
-	warp(amount = 1) { this.warpAmt = Math.min(1.5, this.warpAmt + amount); }
-	pulse(strength = 1) { this.pulseAmt = Math.min(1.5, this.pulseAmt + 0.5 * strength); }
+	warp(amount = 1) { if (this.calm) return; this.warpAmt = Math.min(1.5, this.warpAmt + amount); }
+	pulse(strength = 1) { if (this.calm) return; this.pulseAmt = Math.min(1.5, this.pulseAmt + 0.5 * strength); }
 
 	// ------------------------------------------------------------ Figuren
 	setPlayers(list: StagePlayer[]) {
@@ -203,8 +210,11 @@ export class Stage {
 			const key = p.nick + JSON.stringify(p.avatar);
 			let e = this.players.get(p.id);
 			if (!e) {
-				const start = this.mode === "lobby" ? this.randomLobbySpot() : this.seatPos(i).pos;
+				const used = new Set([...this.players.values()].map(x => x.slot));
+				let slot = 0; while (used.has(slot)) slot++;
+				const start = this.mode === "lobby" && !this.calm ? this.randomLobbySpot() : this.seatPos(this.calm ? slot : i).pos;
 				e = {
+					slot,
 					id: p.id, key: "", idx: i, nick: p.nick, avatar: p.avatar, fig: null, pos: start, ry: 0, vy: 0,
 					state: "loading", target: null, targetRy: 0, wait: 0, answered: false, lastCorrect: false, connected: true,
 					place: 0, flyT: 0, flyFrom: new Vector3(), victoryT: 0, seed: Math.random() * 10,
@@ -213,7 +223,7 @@ export class Stage {
 			}
 			e.idx = i; e.nick = p.nick; e.avatar = p.avatar; e.connected = p.connected !== false;
 			if (key !== e.key) { e.key = key; void this.loadFigure(e); }
-			if (p.answered && !e.answered && e.fig && this.mode !== "lobby") this.hop(e);
+			if (p.answered && !e.answered && e.fig && this.mode !== "lobby" && !this.calm) this.hop(e);
 			e.answered = !!p.answered;
 			e.lastCorrect = !!p.lastCorrect;
 		});
@@ -231,7 +241,7 @@ export class Stage {
 		fig.hit.userData.id = e.id;
 		this.scene.add(fig.root);
 		if (old) { old.dispose(); return; }
-		if (this.mode === "lobby") { e.state = "drop"; e.pos.y = 4 + Math.random() * 2; e.vy = 0; fig.play("fall"); }
+		if (this.mode === "lobby" && !this.calm) { e.state = "drop"; e.pos.y = 4 + Math.random() * 2; e.vy = 0; fig.play("fall"); }
 		else { e.state = "idle"; this.layout(false); }
 	}
 
@@ -243,7 +253,7 @@ export class Stage {
 		const box = new Box3(), size = new Vector3(), c = new Vector3();
 		group.updateMatrixWorld(true);
 		for (const o of group.children) {
-			if (!(o instanceof Group || o instanceof Mesh) || !o.visible) continue;
+			if (!(o instanceof Group || o instanceof Mesh) || !o.visible || o.userData.noCollide) continue; // z. B. Lichtkegel, Fahrzeuge
 			box.setFromObject(o);
 			if (box.isEmpty()) continue;
 			box.getSize(size); box.getCenter(c);
@@ -253,20 +263,49 @@ export class Stage {
 		}
 		return out;
 	}
+	/** Hindernisse der Welt, in der Siegerehrung zusätzlich die sichtbaren Podeststufen */
+	private activeObstacles(): Obstacle[] {
+		if (this.mode !== "podium") return this.obstacles;
+		const th = this.theme, extra = Object.values(this.columns).filter(c => c.obj.visible).map(c => ({ x: th.podium.x + c.x, z: th.podium.z, r: 0.66 }));
+		return extra.length ? [...this.obstacles, ...extra] : this.obstacles;
+	}
 	private blocked(x: number, z: number, margin = 0.15) {
-		return this.obstacles.some(o => (x - o.x) ** 2 + (z - o.z) ** 2 < (o.r + Stage.BODY_R + margin) ** 2);
+		return this.activeObstacles().some(o => (x - o.x) ** 2 + (z - o.z) ** 2 < (o.r + Stage.BODY_R + margin) ** 2);
 	}
 
+	/**
+	 * Freies Ziel im Warteraum. Nicht mehr verstellt (anderes Ziel, stehende Figur, Hindernis); bei vielen Figuren
+	 * werden die Mindestabstände schrittweise gelockert, damit sich niemand am Rand festläuft.
+	 */
 	private randomLobbySpot() {
-		const a = this.theme.lobbyArea;
-		for (let k = 0; k < 30; k++) {
-			const p = new Vector3(a.x0 + Math.random() * (a.x1 - a.x0), 0, a.z0 + Math.random() * (a.z1 - a.z0));
-			const crowded = [...this.players.values()].some(e => e.target && e.state === "walk" && e.target.distanceToSquared(p) < 0.5);
+		const others = [...this.players.values()];
+		for (let k = 0; k < 40; k++) {
+			const p = this.randomLobbySpotRaw(), relax = k < 20 ? 1 : 0.6;
+			const crowded = others.some(e => (e.target && e.state === "walk" && e.target.distanceToSquared(p) < 0.5 * relax)
+				|| (e.state !== "walk" && e.state !== "loading" && (e.pos.x - p.x) ** 2 + (e.pos.z - p.z) ** 2 < 0.45 * relax));
 			if (!this.blocked(p.x, p.z, 0.3) && !crowded) return p;
 		}
 		return this.randomLobbySpotRaw();
 	}
+	private lobbyCam: PerspectiveCamera | null = null;
+	/**
+	 * Zufallspunkt auf dem Boden, der in der Warteraum-Kamera rechts neben dem QR-Panel sichtbar ist
+	 * (Bildschirmbereich statt starres Rechteck: nutzt die freie Fläche und reicht nie aus dem Bild).
+	 */
 	private randomLobbySpotRaw() {
+		const c = this.theme.cams.lobby;
+		const cam = this.lobbyCam ??= new PerspectiveCamera();
+		cam.fov = c.fov; cam.aspect = this.camera.aspect; cam.position.set(...c.pos); cam.lookAt(new Vector3(...c.look));
+		cam.updateProjectionMatrix(); cam.updateMatrixWorld();
+		const p = new Vector3();
+		for (let k = 0; k < 30; k++) {
+			// x: rechts vom QR-Panel bis kurz vor den Rand; y: über den Bedienknöpfen bis zur Bühnenmitte
+			p.set(-0.2 + Math.random() * 1.08, -0.7 + Math.random() * 0.62, 0.5).unproject(cam).sub(cam.position).normalize();
+			if (p.y > -0.02) continue;
+			const g = cam.position.clone().addScaledVector(p, -cam.position.y / p.y);
+			if (g.z < -3.4 || g.z > 3.2 || Math.abs(g.x) > 9) continue;
+			return new Vector3(g.x, 0, g.z);
+		}
 		const a = this.theme.lobbyArea;
 		return new Vector3(a.x0 + Math.random() * (a.x1 - a.x0), 0, a.z0 + Math.random() * (a.z1 - a.z0));
 	}
@@ -285,19 +324,29 @@ export class Stage {
 		const c = this.columns[place]; if (!c) return;
 		c.obj.visible = true; c.up = true; c.t0 = this.clock.elapsedTime;
 		const id = this.podiumIds[place], e = id ? this.players.get(id) : undefined;
-		if (e) { e.state = "fly"; e.flyT = this.clock.elapsedTime + 0.9; e.flyFrom = e.pos.clone(); e.fig?.play("idle"); }
+		if (e) { e.state = "fly"; e.flyT = this.clock.elapsedTime + (this.calm ? 0.6 : 0.9); e.flyFrom = e.pos.clone(); e.fig?.play("idle"); }
 		if (place === 1) this.runtime?.celebrate();
 	}
 
 	/** Zielpositionen je Modus berechnen */
 	private layout(teleport: boolean) {
 		const list = [...this.players.values()].sort((a, b) => a.idx - b.idx);
+		if (this.calm) {
+			// Jede Figur hat von Anfang an ihren festen Platz und bleibt dort; nur die drei Besten gleiten zur Siegerehrung aufs Podest
+			for (const e of list) {
+				if (this.mode === "podium" && e.place && (e.state === "fly" || e.state === "victory")) continue;
+				if (e.state === "victory" || e.state === "fly") e.state = "idle";
+				const s = this.seatPos(e.slot); this.goTo(e, s.pos, s.ry, true);
+			}
+			return;
+		}
 		if (this.mode === "lobby") {
 			for (const e of list) {
 				if (teleport) { e.pos.copy(this.randomLobbySpot()); e.state = e.fig ? "idle" : e.state; e.wait = Math.random() * 2; }
 				if (e.state === "seated" || e.state === "cheer" || e.state === "victory") { e.state = "idle"; e.wait = Math.random() * 1.5; e.fig?.play("idle"); }
 			}
 		} else if (this.mode === "podium") {
+			const crowd = this.crowdSpots(list.filter(e => !e.place).length);
 			let k = 0;
 			for (const e of list) {
 				if (e.place) {
@@ -305,13 +354,37 @@ export class Stage {
 					const front = new Vector3(this.theme.podium.x + PLACE_X[e.place], 0, this.theme.podium.z + 1.25);
 					this.goTo(e, front, 0, teleport);
 				} else {
-					const s = this.theme.crowd(k++, list.length);
-					this.goTo(e, new Vector3(this.theme.podium.x + s.x, 0, this.theme.podium.z + s.z), s.ry, teleport, "cheer");
+					const s = crowd[k++];
+					this.goTo(e, new Vector3(s.x, 0, s.z), s.ry, teleport, "cheer");
 				}
 			}
 		} else {
 			list.forEach((e, i) => { const s = this.seatPos(i); this.goTo(e, s.pos, s.ry, teleport); });
 		}
+	}
+	/**
+	 * Publikumsplätze der Siegerehrung (Weltkoordinaten). Plätze, an denen eine Figur aus Sicht der Siegerehrungs-Kamera
+	 * vom Podest (samt Siegerfiguren darauf) verdeckt würde, werden übersprungen – niemand steht hinter dem Podest.
+	 */
+	private crowdSpots(n: number) {
+		const th = this.theme, out: { x: number; z: number; ry: number }[] = [];
+		const cam = new Vector3(...th.cams.podium.pos);
+		const boxes = [1, 2, 3].map(pl => {
+			const cx = th.podium.x + PLACE_X[pl], m = Stage.BODY_R + 0.1;
+			return new Box3(new Vector3(cx - 0.525 - m, 0, th.podium.z - 0.475 - m), new Vector3(cx + 0.525 + m, PLACE_H[pl] + 0.85, th.podium.z + 0.475 + m));
+		});
+		const ray = new Ray(), hit = new Vector3(), p = new Vector3();
+		const hidden = (x: number, z: number) => [0.05, 0.4, 0.75].some(y => {
+			p.set(x, y, z); ray.origin.copy(cam); ray.direction.copy(p).sub(cam).normalize();
+			const d = cam.distanceTo(p);
+			return boxes.some(b => ray.intersectBox(b, hit) !== null && cam.distanceTo(hit) < d);
+		});
+		for (let k = 0; out.length < n && k < n * 8 + 60; k++) {
+			const s = th.crowd(k, n), x = th.podium.x + s.x, z = th.podium.z + s.z;
+			if (!hidden(x, z)) out.push({ x, z, ry: s.ry });
+		}
+		for (let k = 0; out.length < n; k++) { const s = th.crowd(k, n); out.push({ x: th.podium.x + s.x, z: th.podium.z + s.z, ry: s.ry }); } // Notfall
+		return out;
 	}
 	private goTo(e: Entry, p: Vector3, ry: number, teleport: boolean, arrive: State = "seated") {
 		e.target = p; e.targetRy = ry;
@@ -337,7 +410,7 @@ export class Stage {
 		this.layout(false);
 		for (const e of this.players.values()) e.fig?.showLabel(mode === "lobby" || mode === "podium");
 		// Reaktionen beim Auflösen: richtig -> nicken/jubeln, falsch -> Kopfschütteln
-		if (mode === "reveal") for (const e of this.players.values()) {
+		if (mode === "reveal" && !this.calm) for (const e of this.players.values()) {
 			if (!e.answered || !e.fig) continue;
 			setTimeout(() => e.fig?.play(e.lastCorrect ? "emote-yes" : "emote-no", { once: true, then: () => e.fig?.play("idle") }), 600 + Math.random() * 500);
 		}
@@ -353,6 +426,9 @@ export class Stage {
 		const id = hits[0]?.object.userData.id as string | undefined;
 		if (id) this.onPlayerClick(id);
 	}
+
+	/** Diagnose (Vorschau): Zustand und Position aller Figuren */
+	debugFigures() { return [...this.players.values()].map(e => ({ nick: e.nick, state: e.state, place: e.place, x: +e.pos.x.toFixed(2), z: +e.pos.z.toFixed(2), tx: e.target ? +e.target.x.toFixed(2) : null, tz: e.target ? +e.target.z.toFixed(2) : null })); }
 
 	/** Bildschirmposition über dem Kopf einer Figur (für HTML-Overlays) */
 	screenPos(id: string): { x: number; y: number } | null {
@@ -378,20 +454,24 @@ export class Stage {
 		this.updatePlayers(dt, t);
 		this.updateConfetti(dt, t);
 
-		for (const c of Object.values(this.columns)) if (c.up) c.obj.scale.y = Math.max(0.001, easeBack(Math.min(1, (t - c.t0) / 1.2)));
+		for (const c of Object.values(this.columns)) if (c.up) {
+			const k = Math.min(1, (t - c.t0) / (this.calm ? 2.4 : 1.2));
+			c.obj.scale.y = Math.max(0.001, this.calm ? k * k * (3 - 2 * k) : easeBack(k));
+		}
 
 		// Kamera weich nachführen, sanftes Schweben; in der Antwortzeit leichtes Heranfahren
 		const cam = this.camFor();
-		const push = this.mode === "answering" ? this.tension * 0.8 : 0;
+		const push = this.mode === "answering" && !this.calm ? this.tension * 0.8 : 0;
 		const target = new Vector3(...cam.pos), look = new Vector3(...cam.look);
 		target.add(look.clone().sub(target).normalize().multiplyScalar(push));
-		target.x += Math.sin(t * 0.13) * 0.25; target.y += Math.sin(t * 0.17) * 0.08;
+		if (!this.calm) { target.x += Math.sin(t * 0.13) * 0.25; target.y += Math.sin(t * 0.17) * 0.08; }
 		const k = 1 - Math.pow(0.15, dt);
 		this.camPos.lerp(target, k); this.camLook.lerp(look, k);
 		this.camFov += (cam.fov + this.warpAmt * 8 - this.camFov) * k;
 		this.camera.position.copy(this.camPos); this.camera.lookAt(this.camLook);
 		if (Math.abs(this.camera.fov - this.camFov) > 0.01) { this.camera.fov = this.camFov; this.camera.updateProjectionMatrix(); }
 
+		this.bloom.enabled = this.theme.bloom > 0;
 		this.bloom.strength = this.theme.bloom * (this.mode === "podium" ? 0.55 : 1) + this.pulseAmt * 0.2 + this.warpAmt * 0.2;
 		this.bloom.threshold = this.mode === "podium" ? 0.92 : 0.85;
 		this.composer.render(dt);
@@ -405,7 +485,13 @@ export class Stage {
 			switch (e.state) {
 				case "drop": {
 					e.vy -= 9.8 * dt / this.hopFactor; e.pos.y += e.vy * dt;
-					if (e.pos.y <= 0) { e.pos.y = 0; e.vy = 0; e.state = "idle"; e.wait = 0.8 + Math.random() * 2; fig.play("jump", { once: true, then: () => fig.play(Math.random() < 0.4 ? "emote-yes" : "idle", { once: false }) }); }
+					if (e.pos.y <= 0) {
+						e.pos.y = 0; e.vy = 0; e.wait = 0.8 + Math.random() * 2;
+						// Phase schon gewechselt (Quiz läuft): nach der Landung zum zugewiesenen Platz laufen statt stehen zu bleiben
+						if (this.mode !== "lobby" && e.target) { e.state = "walk"; break; }
+						e.state = "idle";
+						fig.play("jump", { once: true, then: () => fig.play(Math.random() < 0.4 ? "emote-yes" : "idle", { once: false }) });
+					}
 					break;
 				}
 				case "idle":
@@ -437,18 +523,31 @@ export class Stage {
 					else if ((ex.stuck = (ex.stuck ?? 0) + dt) > 1.6) {
 						ex.best = undefined; ex.stuck = 0;
 						if (this.mode === "lobby") e.target = this.randomLobbySpot();
+						else if (((ex as Entry & { stuckN?: number }).stuckN = ((ex as Entry & { stuckN?: number }).stuckN ?? 0) + 1) >= 2) {
+							// Platz bleibt unerreichbar (verstellt): hier stehen bleiben statt endlos zu drängeln
+							(ex as Entry & { stuckN?: number }).stuckN = 0;
+							this.arrive(e, (e as Entry & { arriveAs?: State }).arriveAs ?? "seated");
+						}
 					}
 					break;
 				}
 				case "seated": case "cheer": {
 					// Blick zur Kamera (Publikum) bzw. vorgegebene Richtung
 					const toCam = Math.atan2(camXZ.x - e.pos.x, camXZ.z - e.pos.z);
-					e.ry += angleDiff(this.mode === "podium" ? toCam : e.targetRy, e.ry) * Math.min(1, dt * 4);
+					if (!this.calm) e.ry += angleDiff(this.mode === "podium" ? toCam : e.targetRy, e.ry) * Math.min(1, dt * 4);
 					break;
 				}
 				case "fly": {
 					const top = this.podiumTop(e.place);
-					if (t < e.flyT) { fig.play("crouch"); break; }
+					if (t < e.flyT) { if (!this.calm) fig.play("crouch"); break; }
+					if (this.calm) {
+						// sanft hinübergleiten (hoch genug, um über die vordere Reihe hinwegzuschweben), ohne Sprung-Animation
+						const k0 = Math.min(1, (t - e.flyT) / 2.2), k = k0 * k0 * (3 - 2 * k0);
+						e.pos.copy(e.flyFrom).lerp(top, k); e.pos.y += Math.sin(k * Math.PI) * 1.1;
+						e.ry += angleDiff(0, e.ry) * Math.min(1, dt * 3);
+						if (k0 >= 1) { e.state = "victory"; e.victoryT = 0; e.pos.copy(top); }
+						break;
+					}
 					const k = Math.min(1, (t - e.flyT) / 0.9);
 					fig.play("jump");
 					e.pos.copy(e.flyFrom).lerp(top, k); e.pos.y += Math.sin(k * Math.PI) * 1.6;
@@ -457,6 +556,7 @@ export class Stage {
 				}
 				case "victory": {
 					e.pos.y = this.podiumTop(e.place).y;
+					if (this.calm) break; // ruhig stehen bleiben (auch nicht zur Kamera drehen)
 					e.ry += angleDiff(Math.atan2(camXZ.x - e.pos.x, camXZ.z - e.pos.z), e.ry) * Math.min(1, dt * 5);
 					e.victoryT -= dt;
 					if (e.victoryT <= 0) { e.victoryT = 1.3; fig.play(Math.random() < 0.5 ? "emote-yes" : "jump", { fade: 0.15 }); }
@@ -469,6 +569,9 @@ export class Stage {
 			}
 			fig.root.position.copy(e.pos);
 			fig.root.rotation.y = e.ry;
+			// Ruhige Welt: Figuren in neutraler Pose einfrieren (kein Atmen/Wippen); sonst normal animieren
+			if (this.calm && !fig.still) fig.hold();
+			else if (!this.calm && fig.still) { fig.still = false; fig.play("idle"); }
 			fig.update(dt);
 		}
 		// Kollisionen auflösen: Figuren untereinander (nur wer auf dem Boden steht/läuft) und gegen Hindernisse
@@ -482,7 +585,8 @@ export class Stage {
 			const wa = A.state === "walk" ? 0.7 : 0.3, wb = B.state === "walk" ? 0.7 : 0.3, sum = wa + wb;
 			a.x -= dx * over * wa / sum; a.z -= dz * over * wa / sum; b.x += dx * over * wb / sum; b.z += dz * over * wb / sum;
 		}
-		for (const e of ground) for (const o of this.obstacles) {
+		const obstacles = this.activeObstacles();
+		for (const e of ground) for (const o of obstacles) {
 			const dx = e.pos.x - o.x, dz = e.pos.z - o.z, rr = o.r + Stage.BODY_R, d2 = dx * dx + dz * dz;
 			if (d2 < rr * rr) { const d = Math.sqrt(d2) || 0.001; e.pos.x = o.x + dx / d * rr; e.pos.z = o.z + dz / d * rr; }
 		}
@@ -505,7 +609,7 @@ export class Stage {
 			const s = side >= 0 ? -1 : 1;                           // zur freien Seite ausweichen
 			out.x += want.z * s * strength; out.z += -want.x * s * strength;
 		};
-		for (const o of this.obstacles) avoid(o.x, o.z, o.r, 1.2);
+		for (const o of this.activeObstacles()) avoid(o.x, o.z, o.r, 1.2);
 		for (const o of list) if (o !== e && o.fig && o.state !== "fly" && o.state !== "victory") avoid(o.pos.x, o.pos.z, Stage.BODY_R, o.state === "walk" ? 0.6 : 0.9);
 		return out.lengthSq() > 1e-6 ? out.normalize() : want;
 	}

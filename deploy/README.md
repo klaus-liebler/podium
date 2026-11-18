@@ -7,8 +7,8 @@ Kestrel nur lokal, Ausrollen mit Sicherung und automatischem Rückweg. **Jeden S
 | | |
 |---|---|
 | Programm | `/opt/podium` (vorige Version: `/opt/podium.vorher`) · Dienst `podium.service`, Benutzer `podium` |
-| Daten | `/var/lib/podium/podium.db` (SQLite), Cookie-Schlüssel `/var/lib/podium/schluessel` |
-| Sicherungen | `/var/backups/podium` – täglich 01:45 (`podium-sicherung.timer`, 14 Tage) und vor jedem Update |
+| Daten | `/var/lib/podium/podium.db` (SQLite), Cookie-Schlüssel `/var/lib/podium/schluessel`, eigene Musik der Dozierenden `/var/lib/podium/musik` (Uploads bis 30 MB je Datei – nginx `client_max_body_size 130m`) |
+| Sicherungen | `/var/backups/podium` – täglich 01:45 (`podium-sicherung.timer`, 14 Tage) und vor jedem Update; Musik als fortlaufender Spiegel in `/var/backups/podium/musik` |
 | Geheimnisse | nur `/etc/podium/podium.env` (root:podium, 0640) – nie im Repository |
 | Port | `127.0.0.1:5090` (nur lokal), nach außen nginx `location /podium/` mit WebSockets (SignalR) |
 | Zugang | **kein** nginx-Passwort: Studierende treten per QR ohne Anmeldung bei; Dozentenbereich mit Konten in der App |

@@ -4,6 +4,7 @@ import { customElement, state } from "lit/decorators.js";
 import { LightElement } from "../core/util.ts";
 import type { QuizSummary, SessionSummary } from "../core/types.ts";
 import { ApiError, api, getMe, teacherHeader, type Me } from "../core/session.ts";
+import { THEMES } from "../three/stage.ts";
 
 const fmt = (d: string) => new Date(d).toLocaleString("de-DE", { dateStyle: "medium", timeStyle: "short" });
 
@@ -92,6 +93,11 @@ export class TeacherHome extends LightElement {
 						(z. B. „1,3“) oder eine Podium-/Kahoot-<b>JSON</b>-Datei.</p>
 					<input type="file" accept=".xlsx,.csv,.tsv,.txt,.json" ?disabled=${this.importBusy} @change=${(e: Event) => this.importFile(e)}>
 					<p class="muted" style="margin-bottom:0">Private Kahoots: In Kahoot unter „Teilen“ auf öffentlich stellen oder die Fragen in die offizielle Kahoot-Excel-Vorlage kopieren. Kahoot-Umfragen, Word Clouds und Schieberegler werden übersprungen – die gehen hier als ⚡ Direktfrage.</p>
+				</div>` : nothing}
+				${this.me?.isAdmin ? html`<h2>Szenen-Vorschau</h2>
+				<div class="box">
+					<div class="scene-grid">${THEMES.map(t => html`<a class="button" href="#/preview/${t.id}" title="Leinwand mit 20 Beispielteilnehmenden und deiner Musikauswahl">${t.icon} ${t.label}</a>`)}</div>
+					<p class="muted small" style="margin:0;padding:0 16px 12px">Spielt eine Beispielrunde lokal durch (ohne echte Teilnehmende). Oben in der Leiste springst du direkt zu Warteraum, Frage, Lösung, Zwischenstand, Siegerehrung oder Statistik.</p>
 				</div>` : nothing}
 				<h2>Meine Quizze</h2>
 				<div class="box"><table>

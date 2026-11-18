@@ -1,5 +1,5 @@
 {
-  "_info": "Alle Stücke außer winner sind CC0 (gemeinfrei) von opengameart.org bzw. gemeinfreie Klassik; winner ist ein eigener, mit Suno erstellter Song (nicht CC0, siehe CREDITS.md). lobby = Warteraum, question = Antwortzeit (wird mit Stoppuhr-Ticken gemischt), celebrate = Zwischenstand/Siegerehrung, tada = optionaler Tusch für Platz 1 (fehlt er, folgt winner direkt auf den Trommelwirbel), winner = Sieger-Song (start/end = optionaler Ausschnitt in Sekunden). themes.<id> überschreibt einzelne Stimmungen für eine 3D-Welt.",
+  "_info": "Alle Stücke außer winner/extra sind CC0 (gemeinfrei) von opengameart.org bzw. gemeinfreie Klassik; winner und extra sind eigene, mit Suno erstellte Stücke (nicht CC0, siehe CREDITS.md). lobby = Warteraum, question = Antwortzeit (wird mit Stoppuhr-Ticken gemischt), celebrate = Feier nach dem Sieger-Song (und Standard für reveal), reveal = optional: Lösungsfolie/Zwischenstand/Endstatistik, tada = optionaler Tusch für Platz 1 (fehlt er, folgt winner direkt auf den Trommelwirbel), winner = Sieger-Song (start/end = optionaler Ausschnitt in Sekunden), extra = wird nicht automatisch gespielt, nur im Musikmanager wählbar. themes.<id> überschreibt einzelne Stimmungen für eine 3D-Welt. Die Auswahl im Musikmanager (je Konto) hat Vorrang vor dieser Datei.",
   "lobby": [
     {
       "file": "elevator2.mp3",
@@ -73,6 +73,13 @@
     }
   ],
   "winner": [
+    {
+      "file": "the_final_fanfare.mp3",
+      "title": "The Final Fanfare",
+      "author": "Klaus Liebler (mit Suno erstellt)"
+    }
+  ],
+  "extra": [
     {
       "file": "podium_gehoert_euch.mp3",
       "title": "Das Podium gehört euch",

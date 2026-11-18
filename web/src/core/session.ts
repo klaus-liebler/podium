@@ -56,6 +56,7 @@ export function teacherHeader(m: Me | null, extra: unknown = nothing) {
 		<span class="spacer"></span>
 		${extra}
 		${m ? html`
+			<a class="button" href="#/music" title="Musik für Fragestellung, Lösung und Siegerehrung wählen, eigene Stücke hochladen">🎵 Musik</a>
 			${m.isAdmin ? html`<a class="button" href="#/users" title="Konten und Einladungen verwalten">👥 Benutzer</a>` : nothing}
 			<a class="button user-btn" href="#/account" title="Eigenes Konto, Passwort ändern">👤 ${m.displayName}</a>
 			<button @click=${() => logout()}>Abmelden</button>` : nothing}
