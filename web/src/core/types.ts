@@ -56,8 +56,9 @@ export interface PlayerState {
 	hasQuiz: boolean; direct: PlayerDirect | null;
 }
 
-export interface QuizSummary { id: number; title: string; description: string; updatedUtc: string; questionCount: number; }
+export interface QuizSummary { id: number; title: string; description: string; folderId: number | null; updatedUtc: string; questionCount: number; }
+export interface QuizFolder { id: number; name: string; }
 export interface OptionDto { text: string; isCorrect: boolean; }
 export interface QuestionDto { text: string; timeLimitSeconds: number; pointsMultiplier: number; options: OptionDto[]; }
-export interface QuizDto { id: number; title: string; description: string | null; questions: QuestionDto[]; }
+export interface QuizDto { id: number; title: string; description: string | null; folderId?: number | null; questions: QuestionDto[]; }
 export interface SessionSummary { id: number; quizTitle: string; startedUtc: string; finishedUtc: string | null; playerCount: number; winner: string | null; }

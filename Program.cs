@@ -110,11 +110,18 @@ api.MapGet("/qr", (string data) =>
 var my = api.MapGroup("").RequireAuthorization();
 
 IQueryable<Quiz> Own(AppDb db, ClaimsPrincipal u) { var id = u.UserId(); return db.Quizzes.Where(q => q.OwnerId == id); }
+// Ordner-ID nur übernehmen, wenn der Ordner dem Konto gehört
+async Task<int?> OwnFolder(AppDb db, ClaimsPrincipal u, int? folderId)
+{
+    if (folderId is not > 0) return null;
+    var uid = u.UserId();
+    return await db.QuizFolders.AnyAsync(f => f.Id == folderId && f.OwnerId == uid) ? folderId : null;
+}
 IQueryable<Quiz> OwnFull(AppDb db, ClaimsPrincipal u) => Own(db, u).Include(x => x.Questions).ThenInclude(x => x.Options);
 
 my.MapGet("/quizzes", async (AppDb db, ClaimsPrincipal u) =>
     await Own(db, u).OrderByDescending(q => q.UpdatedUtc)
-        .Select(q => new { q.Id, q.Title, q.Description, q.UpdatedUtc, QuestionCount = q.Questions.Count })
+        .Select(q => new { q.Id, q.Title, q.Description, q.FolderId, q.UpdatedUtc, QuestionCount = q.Questions.Count })
         .ToListAsync());
 
 my.MapGet("/quizzes/{id:int}", async (int id, AppDb db, ClaimsPrincipal u) =>
@@ -126,7 +133,7 @@ my.MapGet("/quizzes/{id:int}", async (int id, AppDb db, ClaimsPrincipal u) =>
 my.MapPost("/quizzes", async (QuizDto dto, AppDb db, ClaimsPrincipal u) =>
 {
     if (dto.Validate() is { } err) return Results.BadRequest(new { error = err });
-    var q = new Quiz { OwnerId = u.UserId() };
+    var q = new Quiz { OwnerId = u.UserId(), FolderId = await OwnFolder(db, u, dto.FolderId) };
     dto.ApplyTo(q);
     db.Quizzes.Add(q);
     await db.SaveChangesAsync();
@@ -150,7 +157,7 @@ my.MapPost("/quizzes/{id:int}/copy", async (int id, AppDb db, ClaimsPrincipal u)
 {
     var q = await OwnFull(db, u).AsNoTracking().FirstOrDefaultAsync(x => x.Id == id);
     if (q == null) return Results.NotFound();
-    var copy = new Quiz { OwnerId = u.UserId() };
+    var copy = new Quiz { OwnerId = u.UserId(), FolderId = q.FolderId };
     (QuizDto.From(q) with { Title = q.Title + " (Kopie)" }).ApplyTo(copy);
     db.Quizzes.Add(copy);
     await db.SaveChangesAsync();
@@ -167,28 +174,75 @@ my.MapGet("/quizzes/{id:int}/export", async (int id, AppDb db, ClaimsPrincipal u
 {
     var q = await OwnFull(db, u).AsNoTracking().FirstOrDefaultAsync(x => x.Id == id);
     if (q == null) return Results.NotFound();
-    var json = System.Text.Json.JsonSerializer.Serialize(QuizDto.From(q) with { Id = 0 },
+    var json = System.Text.Json.JsonSerializer.Serialize(QuizDto.From(q) with { Id = 0, FolderId = null },
         new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web) { WriteIndented = true });
     var name = string.Concat(q.Title.Select(c => char.IsLetterOrDigit(c) ? c : '_'));
     return Results.File(System.Text.Encoding.UTF8.GetBytes(json), "application/json", $"podium-{name}.json");
 });
 
+// ---------------------------------------------------------------- Ordner (z. B. je Kurs)
+my.MapGet("/folders", async (AppDb db, ClaimsPrincipal u) =>
+{
+    var id = u.UserId();
+    return await db.QuizFolders.Where(f => f.OwnerId == id).OrderBy(f => f.Name).Select(f => new { f.Id, f.Name }).ToListAsync();
+});
+
+my.MapPost("/folders", async (FolderRequest req, AppDb db, ClaimsPrincipal u) =>
+{
+    var name = req.Name?.Trim() ?? "";
+    if (name.Length is 0 or > 80) return Results.BadRequest(new { error = "Ordnername: 1 bis 80 Zeichen." });
+    var f = new QuizFolder { OwnerId = u.UserId(), Name = name };
+    db.QuizFolders.Add(f);
+    await db.SaveChangesAsync();
+    return Results.Ok(new { f.Id, f.Name });
+});
+
+my.MapPut("/folders/{id:int}", async (int id, FolderRequest req, AppDb db, ClaimsPrincipal u) =>
+{
+    var name = req.Name?.Trim() ?? "";
+    if (name.Length is 0 or > 80) return Results.BadRequest(new { error = "Ordnername: 1 bis 80 Zeichen." });
+    var uid = u.UserId();
+    var f = await db.QuizFolders.FirstOrDefaultAsync(x => x.Id == id && x.OwnerId == uid);
+    if (f == null) return Results.NotFound();
+    f.Name = name;
+    await db.SaveChangesAsync();
+    return Results.Ok(new { f.Id, f.Name });
+});
+
+// Ordner löschen: enthaltene Quizze bleiben erhalten (ohne Ordner)
+my.MapDelete("/folders/{id:int}", async (int id, AppDb db, ClaimsPrincipal u) =>
+{
+    var uid = u.UserId();
+    if (!await db.QuizFolders.AnyAsync(f => f.Id == id && f.OwnerId == uid)) return Results.NotFound();
+    await Own(db, u).Where(q => q.FolderId == id).ExecuteUpdateAsync(s => s.SetProperty(q => q.FolderId, (int?)null));
+    await db.QuizFolders.Where(f => f.Id == id).ExecuteDeleteAsync();
+    return Results.NoContent();
+});
+
+my.MapPut("/quizzes/{id:int}/folder", async (int id, MoveRequest req, AppDb db, ClaimsPrincipal u) =>
+{
+    var folder = await OwnFolder(db, u, req.FolderId);
+    if (req.FolderId is > 0 && folder == null) return Results.NotFound();
+    var n = await Own(db, u).Where(q => q.Id == id).ExecuteUpdateAsync(s => s.SetProperty(q => q.FolderId, folder));
+    return n == 0 ? Results.NotFound() : Results.NoContent();
+});
+
 // ---------------------------------------------------------------- Import (Kahoot-Link, Kahoot-JSON, Kahoot-Tabellenvorlage, CSV, Podium-JSON)
-async Task<IResult> SaveImport(QuizImport.Result r, AppDb db, ClaimsPrincipal u)
+async Task<IResult> SaveImport(QuizImport.Result r, AppDb db, ClaimsPrincipal u, int? folder)
 {
     if (r.Quiz == null) return Results.BadRequest(new { error = r.Error ?? "Import fehlgeschlagen", warnings = r.Warnings });
     if (r.Quiz.Validate() is { } err) return Results.BadRequest(new { error = err, warnings = r.Warnings });
-    var quiz = new Quiz { OwnerId = u.UserId() };
+    var quiz = new Quiz { OwnerId = u.UserId(), FolderId = await OwnFolder(db, u, folder) };
     r.Quiz.ApplyTo(quiz);
     db.Quizzes.Add(quiz);
     await db.SaveChangesAsync();
     return Results.Ok(new { quiz.Id, quiz.Title, Count = quiz.Questions.Count, r.Warnings });
 }
 
-my.MapPost("/import/kahoot", async (ImportUrlRequest req, IHttpClientFactory http, AppDb db, ClaimsPrincipal u) =>
-    await SaveImport(await QuizImport.FromKahootUrlAsync(req.Url, http.CreateClient("import")), db, u));
+my.MapPost("/import/kahoot", async (ImportUrlRequest req, int? folder, IHttpClientFactory http, AppDb db, ClaimsPrincipal u) =>
+    await SaveImport(await QuizImport.FromKahootUrlAsync(req.Url, http.CreateClient("import")), db, u, folder));
 
-my.MapPost("/import/file", async (IFormFile file, AppDb db, ClaimsPrincipal u) =>
+my.MapPost("/import/file", async (IFormFile file, int? folder, AppDb db, ClaimsPrincipal u) =>
 {
     if (file.Length > 10_000_000) return Results.BadRequest(new { error = "Datei zu groß (max. 10 MB)." });
     var name = Path.GetFileNameWithoutExtension(file.FileName);
@@ -214,7 +268,7 @@ my.MapPost("/import/file", async (IFormFile file, AppDb db, ClaimsPrincipal u) =
     {
         return Results.BadRequest(new { error = "Die Datei konnte nicht gelesen werden: " + ex.Message });
     }
-    return await SaveImport(r, db, u);
+    return await SaveImport(r, db, u, folder);
 }).DisableAntiforgery(); // Cookie ist SameSite=Strict
 
 my.MapGet("/directpolls", async (AppDb db, ClaimsPrincipal u) =>
@@ -249,14 +303,19 @@ app.Run();
 
 record CreateGameRequest(int QuizId);
 record ImportUrlRequest(string Url);
+record FolderRequest(string? Name);
+record MoveRequest(int? FolderId);
 
 record OptionDto(string Text, bool IsCorrect);
 record QuestionDto(string Text, int TimeLimitSeconds, int PointsMultiplier, List<OptionDto> Options);
 record QuizDto(int Id, string Title, string? Description, List<QuestionDto> Questions)
 {
+    /// <summary>nur beim Laden und Neuanlegen ausgewertet; Speichern ändert den Ordner nicht</summary>
+    public int? FolderId { get; init; }
+
     public static QuizDto From(Quiz q) => new(q.Id, q.Title, q.Description,
         q.Questions.OrderBy(x => x.Order).Select(x => new QuestionDto(x.Text, x.TimeLimitSeconds, x.PointsMultiplier,
-            x.Options.OrderBy(o => o.Order).Select(o => new OptionDto(o.Text, o.IsCorrect)).ToList())).ToList());
+            x.Options.OrderBy(o => o.Order).Select(o => new OptionDto(o.Text, o.IsCorrect)).ToList())).ToList()) { FolderId = q.FolderId };
 
     public string? Validate()
     {

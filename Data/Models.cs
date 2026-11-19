@@ -59,9 +59,20 @@ public class Quiz
     public int? OwnerId { get; set; }
     public string Title { get; set; } = "";
     public string Description { get; set; } = "";
+    /// <summary>optional: Ordner (z. B. ein Kurs); null = ohne Ordner</summary>
+    public int? FolderId { get; set; }
     public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedUtc { get; set; } = DateTime.UtcNow;
     public List<Question> Questions { get; set; } = new();
+}
+
+/// <summary>Ordner für Quizze eines Kontos (z. B. je Kurs). Löschen lässt die Quizze bestehen (sie wandern nach „ohne Ordner“).</summary>
+public class QuizFolder
+{
+    public int Id { get; set; }
+    public int OwnerId { get; set; }
+    public string Name { get; set; } = "";
+    public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
 }
 
 public class Question
@@ -129,6 +140,7 @@ public class AppDb(DbContextOptions<AppDb> options) : DbContext(options)
     public DbSet<User> Users => Set<User>();
     public DbSet<Invite> Invites => Set<Invite>();
     public DbSet<Quiz> Quizzes => Set<Quiz>();
+    public DbSet<QuizFolder> QuizFolders => Set<QuizFolder>();
     public DbSet<Question> Questions => Set<Question>();
     public DbSet<AnswerOption> AnswerOptions => Set<AnswerOption>();
     public DbSet<GameSession> GameSessions => Set<GameSession>();
@@ -179,6 +191,11 @@ public class AppDb(DbContextOptions<AppDb> options) : DbContext(options)
             ""OwnerId"" INTEGER NOT NULL, ""Title"" TEXT NOT NULL, ""FileName"" TEXT NOT NULL, ""StoredName"" TEXT NOT NULL,
             ""Size"" INTEGER NOT NULL, ""StartSec"" REAL NULL, ""IntroEndSec"" REAL NULL, ""CreatedUtc"" TEXT NOT NULL)");
         Database.ExecuteSqlRaw(@"CREATE INDEX IF NOT EXISTS ""IX_MusicUploads_OwnerId"" ON ""MusicUploads"" (""OwnerId"")");
+        Database.ExecuteSqlRaw(@"CREATE TABLE IF NOT EXISTS ""QuizFolders"" (
+            ""Id"" INTEGER NOT NULL CONSTRAINT ""PK_QuizFolders"" PRIMARY KEY AUTOINCREMENT,
+            ""OwnerId"" INTEGER NOT NULL, ""Name"" TEXT NOT NULL, ""CreatedUtc"" TEXT NOT NULL)");
+        Database.ExecuteSqlRaw(@"CREATE INDEX IF NOT EXISTS ""IX_QuizFolders_OwnerId"" ON ""QuizFolders"" (""OwnerId"")");
+        if (!HasColumn("Quizzes", "FolderId")) Database.ExecuteSqlRaw(@"ALTER TABLE ""Quizzes"" ADD COLUMN ""FolderId"" INTEGER NULL");
     }
 
     bool HasColumn(string table, string column)
@@ -195,6 +212,7 @@ public class AppDb(DbContextOptions<AppDb> options) : DbContext(options)
         b.Entity<User>().HasIndex(u => u.UserName).IsUnique();
         b.Entity<Invite>().HasIndex(i => i.TokenHash).IsUnique();
         b.Entity<MusicUpload>().HasIndex(m => m.OwnerId);
+        b.Entity<QuizFolder>().HasIndex(f => f.OwnerId);
         b.Entity<Quiz>().HasMany(q => q.Questions).WithOne().HasForeignKey(q => q.QuizId).OnDelete(DeleteBehavior.Cascade);
         b.Entity<Question>().HasMany(q => q.Options).WithOne().HasForeignKey(o => o.QuestionId).OnDelete(DeleteBehavior.Cascade);
         b.Entity<GameSession>().HasMany(g => g.Players).WithOne().HasForeignKey(p => p.GameSessionId).OnDelete(DeleteBehavior.Cascade);

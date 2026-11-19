@@ -1,6 +1,7 @@
 // Einstieg: eine einzige Seite mit Hash-Routing.
 //   #/                 Dozentenbereich (Quiz-Übersicht)
-//   #/edit/new|<id>    Quiz-Editor
+//   #/folder/<id>      Dozentenbereich, ein Ordner (z. B. Kurs) geöffnet
+//   #/edit/new|<id>    Quiz-Editor (#/edit/new?folder=<id> legt im Ordner an)
 //   #/host/<pin>/<key> Leinwand (3D-Welt, Musik)
 //   #/join[/<pin>]     Handy der Studierenden (Ziel des QR-Codes bei Quiz)
 //   #/login · #/invite/<token> · #/account · #/users   Anmeldung und Konten
@@ -43,7 +44,8 @@ export class PodiumApp extends LightElement {
 			case "music": return html`<music-view></music-view>`;
 			case "join": return html`<player-view .pin=${parts[1] ?? ""}></player-view>`;
 			case "ask": return html`<player-view .pin=${parts[1] ?? ""} .anon=${true}></player-view>`;
-			case "edit": return html`<quiz-editor .quizId=${parts[1] === "new" ? 0 : Number(parts[1] ?? 0)}></quiz-editor>`;
+			case "edit": return html`<quiz-editor .quizId=${parts[1] === "new" ? 0 : Number(parts[1] ?? 0)} .folderId=${Number(new URLSearchParams(query).get("folder") ?? 0)}></quiz-editor>`;
+			case "folder": return html`<teacher-home .folderId=${Number(parts[1] ?? 0)}></teacher-home>`;
 			default: return html`<teacher-home></teacher-home>`;
 		}
 	}

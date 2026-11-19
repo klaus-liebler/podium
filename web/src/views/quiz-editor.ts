@@ -14,6 +14,8 @@ const blankQ = (): QuestionDto => ({
 @customElement("quiz-editor")
 export class QuizEditor extends LightElement {
 	@property({ type: Number }) quizId = 0;
+	/** nur für neue Quizze: Zielordner */
+	@property({ type: Number }) folderId = 0;
 	@state() private quiz: QuizDto = { id: 0, title: "", description: "", questions: [] };
 	@state() private msg: { text: string; ok: boolean } | null = null;
 	@state() private loading = true;
@@ -28,7 +30,7 @@ export class QuizEditor extends LightElement {
 
 	protected override async willUpdate(changed: Map<string, unknown>) {
 		if (!changed.has("quizId")) return;
-		if (!this.quizId) { this.quiz = { id: 0, title: "", description: "", questions: [blankQ()] }; this.loading = false; return; }
+		if (!this.quizId) { this.quiz = { id: 0, title: "", description: "", folderId: this.folderId || null, questions: [blankQ()] }; this.loading = false; return; }
 		try { this.quiz = await api<QuizDto>(`quizzes/${this.quizId}`); this.loading = false; }
 		catch (e) { if ((e as ApiError).status !== 401) this.msg = { text: "Quiz nicht gefunden.", ok: false }; }
 	}
@@ -60,7 +62,7 @@ export class QuizEditor extends LightElement {
 	protected override render() {
 		const qs = this.quiz.questions;
 		return html`
-			${teacherHeader(this.me, html`<a class="button" href="#/">← Zur Übersicht</a>`)}
+			${teacherHeader(this.me, html`<a class="button" href=${this.quiz.folderId ? `#/folder/${this.quiz.folderId}` : "#/"}>← Zur Übersicht</a>`)}
 			<main>
 				${this.msg ? html`<div class="msg ${this.msg.ok ? "ok" : "err"}">${this.msg.text}</div>` : nothing}
 				${this.loading ? html`<div class="box empty">Lade …</div>` : html`

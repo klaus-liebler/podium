@@ -102,7 +102,7 @@ export class MusicView extends LightElement {
 		const c = this.cfg;
 		const used = c?.uploads.reduce((a, u) => a + u.size, 0) ?? 0;
 		return html`
-			${teacherHeader(this.me)}
+			${teacherHeader(this.me, html`<a class="button" href="#/">← Zur Übersicht</a>`)}
 			<main class="music">
 				<h2>🎵 Musik für meine Runden</h2>
 				<p class="muted">Wähle pro Abschnitt ein oder mehrere Stücke – bei mehreren wird abwechselnd gespielt.
