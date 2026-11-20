@@ -493,7 +493,8 @@ export class HostView extends LightElement {
 					<div class="lbl c${i}">${shape(i)}</div>
 				</div>`)}</div>
 			<div class="stat-row">
-				<span class="pill">✓ ${s.correctCount} von ${s.players.length} richtig (${pct} %)</span>
+				<span class="pill">✓ ${s.correctCount} von ${s.answeredCount} richtig (${pct} %)</span>
+				${s.answeredCount < s.players.length ? html`<span class="pill">✋ ${s.answeredCount} von ${s.players.length} haben geantwortet</span>` : nothing}
 				<span class="pill">⏱ Ø ${fmtSecs(s.avgMs)} s</span>
 			</div>
 			${this.tiles(q, true)}
