@@ -26,3 +26,8 @@ deploy/ausgabe/
 .idea/
 Thumbs.db
 .DS_Store
+
+# Mit Suno (kostenloser Tarif) erstellte Lieder: nur für die eigene Nutzung, nicht öffentlich weiterverbreiten.
+# Liegen lokal in web/public/music/ und werden mit deploy.ps1 auf den Server ausgerollt.
+web/public/music/the_final_fanfare.mp3
+web/public/music/podium_gehoert_euch_*.mp3
