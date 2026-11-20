@@ -1,4 +1,4 @@
-// Ruhige Bühne: für Grundschulen und neurodivergente Kinder. Abstrakt, gedämpfte Farben, nichts bewegt sich –
+// Ruhige Bühne: für alle, die es ruhiger mögen. Abstrakt, gedämpfte Farben, nichts bewegt sich –
 // keine Lichteffekte, kein Konfetti, kein Feuerwerk, feste Kamera. Die Figuren stehen von Anfang an auf festen Plätzen
 // einer runden Bühne und warten ruhig; zur Siegerehrung wachsen die Podeste langsam und die drei Besten gleiten hinauf.
 import {

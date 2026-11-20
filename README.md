@@ -15,8 +15,7 @@ nur mit einem selbst gewählten Spitznamen mit.
 - 📱 **Beitreten in Sekunden:** QR-Code scannen oder PIN eingeben, Spitznamen wählen, fertig. Keine App, kein Konto.
 - 🎭 **Eigene Figur:** Figur und Kopfbedeckung aussuchen. Die Figur steht live in der 3D-Welt auf der Leinwand.
 - 🌍 **Sieben 3D-Welten:** Gameshow-Studio, Campus-Insel, Weltraum-Arena, Stadion, Apfelwiese, Osnabrück und die
-  *Ruhige Bühne*. Die Ruhige Bühne kommt ohne Bewegung und Effekte aus und ist für die Grundschule und neurodivergente
-  Kinder gedacht.
+  *Ruhige Bühne*. Die Ruhige Bühne kommt ohne Bewegung, Lichteffekte und Konfetti aus, für alle, die es ruhiger mögen.
 - 🎵 **Musik mit Spannungsbogen:** Warteraum-Musik, tickende Stoppuhr, Fanfaren, Konfetti und Sieger-Songs. Im
   Musikmanager lässt sich jeder Abschnitt mit eigener Musik belegen, auch mit hochgeladenen Stücken.
 - ⚡ **Direktfragen jederzeit:** Spontan nachfragen, auch mitten im Quiz: Ja/Nein, „Verstanden?“, Skala, Schätzfrage
@@ -92,7 +91,7 @@ Entwicklung mit Hot-Reload: Backend per `dotnet run` starten, dann `cd web; npm 
 | `web/public/music/` | CC0-/gemeinfreie Musik (`tracks.json` ordnet Stücke den Stimmungen und Welten zu, Quellen in `CREDITS.md`) |
 | `docs/suno-songs.md` | Texte und Stilbeschreibungen der Suno-Stücke für die Siegerehrung (inkl. Entwürfe) |
 | `web/public/models/` | CC0-3D-Modelle von Kenney (Figuren, Natur, Stadt, Weltraum, Arena, Möbel) |
-| `web/src/three/themes/` | 3D-Welten: Gameshow-Studio, Campus-Insel, Weltraum-Arena, Stadion, Apfelwiese, Osnabrück, Ruhige Bühne (ohne Bewegung, für Grundschule/neurodivergente Kinder) |
+| `web/src/three/themes/` | 3D-Welten: Gameshow-Studio, Campus-Insel, Weltraum-Arena, Stadion, Apfelwiese, Osnabrück, Ruhige Bühne (ohne Bewegung und Effekte, für alle, die es ruhiger mögen) |
 | `Music/MusicApi.cs`, `web/src/views/music-view.ts` | Musikmanager: Musik je Abschnitt (Warteraum, Fragestellung, Lösung & Statistik, Siegerehrung) pro Konto, eigene Uploads (`musik/` neben der Datenbank, Pfad per `MusicPath`) |
 | `web/src/views/preview-sim.ts` | Szenen-Vorschau für Admins: spielt eine Runde mit 20 Beispielteilnehmenden lokal durch |
 | `deploy/` | Bereitstellung auf liebler.iui.hs-osnabrueck.de (systemd, nginx-Schema `liebler.d/`, Sicherung) |

@@ -31,7 +31,7 @@ export interface ThemeDef {
 	bloom: number; exposure: number;
 	/** Sprunghöhe-Faktor (Mond: höher) */
 	hop?: number;
-	/** Ruhige Welt (z. B. Grundschule, neurodivergente Kinder): nichts bewegt sich, Figuren stehen fest, kein Konfetti/Feuerwerk */
+	/** Ruhige Welt (für alle, die es ruhiger mögen): nichts bewegt sich, Figuren stehen fest, kein Konfetti/Feuerwerk */
 	calm?: boolean;
 	build(ctx: ThemeCtx): Promise<ThemeRuntime>;
 }
