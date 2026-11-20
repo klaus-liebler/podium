@@ -1,5 +1,56 @@
 # Podium – Live-Quiz für die Lehre
 
+**Aus dem Hörsaal wird eine Gameshow.** Podium ist ein Live-Quiz für Vorlesung, Seminar und Klassenzimmer: Die Fragen
+laufen auf der Leinwand in einer animierten 3D-Welt mit Musik. Die Teilnehmenden spielen mit dem Handy mit, ganz ohne
+App und ohne Anmeldung. Jede Person steht mit einer selbst gestalteten Figur auf der Bühne, und am Ende werden die drei
+Besten auf dem Siegerpodest gefeiert, mit Konfetti und eigenem Sieger-Song.
+
+Podium läuft auf dem eigenen Server. Die Daten der Teilnehmenden verlassen die Hochschule nicht, und Studierende spielen
+nur mit einem selbst gewählten Spitznamen mit.
+
+![Siegerehrung im Gameshow-Studio](docs/screenshots/siegerehrung.jpg)
+
+### Das kann Podium
+
+- 📱 **Beitreten in Sekunden:** QR-Code scannen oder PIN eingeben, Spitznamen wählen, fertig. Keine App, kein Konto.
+- 🎭 **Eigene Figur:** Figur, Kopfbedeckung und Hilfsmittel (Brille, Hörgerät, Gehstock) aussuchen. Die Figur steht live
+  in der 3D-Welt auf der Leinwand.
+- 🌍 **Sieben 3D-Welten:** Gameshow-Studio, Campus-Insel, Weltraum-Arena, Stadion, Apfelwiese, Osnabrück und die
+  *Ruhige Bühne*. Die Ruhige Bühne kommt ohne Bewegung und Effekte aus und ist für die Grundschule und neurodivergente
+  Kinder gedacht.
+- 🎵 **Musik mit Spannungsbogen:** Warteraum-Musik, tickende Stoppuhr, Fanfaren, Konfetti und Sieger-Songs. Im
+  Musikmanager lässt sich jeder Abschnitt mit eigener Musik belegen, auch mit hochgeladenen Stücken.
+- ⚡ **Direktfragen jederzeit:** Spontan nachfragen, auch mitten im Quiz: Ja/Nein, „Verstanden?“, Skala, Schätzfrage
+  oder ein Wort für die Word Cloud. Die Antworten sind anonym und erscheinen auf Wunsch live.
+- 🏆 **Punkte für Tempo und Serien:** Wer schnell und richtig antwortet, sammelt mehr Punkte. Zwischenstände halten
+  die Spannung hoch, am Ende gibt es eine Statistik zu jeder Frage.
+- 📥 **Vorhandene Quizze übernehmen:** Import per Kahoot-Link, Kahoot-Tabellenvorlage (.xlsx), CSV oder JSON. Export
+  als JSON.
+- 🗂️ **Ordnung für viele Kurse:** Quizze in Ordnern, Editor mit 2 bis 6 Antworten je Frage, Zeitlimit und doppelten
+  Punkten.
+- 👥 **Für das ganze Kollegium:** Eigene Konten mit Einladungslinks, jede Person sieht nur ihre eigenen Quizze.
+- 👀 **Szenen-Vorschau:** Jede Welt lässt sich mit 20 simulierten Teilnehmenden ansehen, bevor es ernst wird.
+
+### So läuft eine Runde
+
+| Warteraum | Frage | Lösung |
+|---|---|---|
+| ![Warteraum mit QR-Code und Figuren](docs/screenshots/warteraum.jpg) | ![Frage mit Countdown](docs/screenshots/frage.jpg) | ![Auflösung mit Antwortverteilung](docs/screenshots/loesung.jpg) |
+| Alle scannen den QR-Code, die Figuren laufen auf die Bühne. | Countdown, Musik und Live-Zähler der Antworten. | Antwortverteilung, Trefferquote und durchschnittliche Antwortzeit. |
+
+### Die Welten
+
+| | | |
+|---|---|---|
+| ![Campus-Insel](docs/screenshots/welt-campus.jpg) | ![Weltraum-Arena](docs/screenshots/welt-space.jpg) | ![Stadion](docs/screenshots/welt-stadium.jpg) |
+| 🏫 **Campus-Insel** | 🚀 **Weltraum-Arena** | 🏟️ **Stadion** |
+| ![Apfelwiese](docs/screenshots/welt-nature.jpg) | ![Osnabrück](docs/screenshots/welt-osnabrueck.jpg) | ![Ruhige Bühne](docs/screenshots/welt-calm.jpg) |
+| 🍎 **Apfelwiese** | ⛪ **Osnabrück** | 🌙 **Ruhige Bühne** |
+
+---
+
+## Technik
+
 Live-Quiz mit Leinwand (3D-Welt, Musik), Handy-Teilnahme per QR-Code, Dozentenbereich und spontanen Direktfragen.
 
 ## Voraussetzungen

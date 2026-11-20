@@ -10,9 +10,9 @@ Zeitablauf der Siegerehrung in Podium (Song startet sofort): Platz 3 bei 1,2 s, 
 
 ---
 
-## Das Podium gehört euch
+## Das Podium gehört euch (Liebler)
 
-Datei: `podium_gehoert_euch.mp3` · im Musikmanager wählbar (`extra` in `tracks.json`), Intro-Ende 18 s.
+Datei: `podium_gehoert_euch_liebler.mp3` · im Musikmanager wählbar (`extra` in `tracks.json`), Intro-Ende 18 s.
 Persönliche Fassung (nennt Professor Liebler).
 
 ```
@@ -50,9 +50,10 @@ wide gang-vocal stacking; warm mid-range lead with a powerful full-voice belt, c
 
 ---
 
-## Entwurf: Das Podium gehört euch – Hochschulfassung (ohne Namen, ≈ 1 min)
+## Das Podium gehört euch (HSOS) – Hochschulfassung (ohne Namen, ≈ 1 min)
 
-Noch nicht erzeugt. Gleicher Aufbau wie oben; Name ersetzt durch die Hochschule, Schluss mit Dank und Ermutigung.
+Datei: `podium_gehoert_euch_hsos.mp3` · im Musikmanager wählbar (`extra` in `tracks.json`), Intro-Ende 23 s.
+Gleicher Aufbau wie oben; Name ersetzt durch die Hochschule, Schluss mit Dank und Ermutigung.
 
 Style (wie das Original, damit beide Fassungen gleich klingen):
 ```

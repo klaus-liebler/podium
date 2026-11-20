@@ -24,7 +24,8 @@ Texte und Suno-Stilbeschreibungen: `docs/suno-songs.md` im Repository.
 | Datei | Titel | Urheber | Hinweis |
 |---|---|---|---|
 | the_final_fanfare.mp3 | The Final Fanfare (Standard für die Siegerehrung) | Klaus Liebler, erstellt mit Suno (suno.com) | Nicht gemeinfrei – Nutzung nach den Suno-Bedingungen des erstellenden Kontos |
-| podium_gehoert_euch.mp3 | Das Podium gehört euch | Klaus Liebler, erstellt mit Suno (suno.com) | Nicht gemeinfrei – Nutzung nach den Suno-Bedingungen des erstellenden Kontos | Im Musikmanager wählbar.
+| podium_gehoert_euch_hsos.mp3 | Das Podium gehört euch (HSOS) – Hochschulfassung ohne Namen | Klaus Liebler, erstellt mit Suno (suno.com) | Nicht gemeinfrei – Nutzung nach den Suno-Bedingungen des erstellenden Kontos | Im Musikmanager wählbar.
+| podium_gehoert_euch_liebler.mp3 | Das Podium gehört euch (Liebler) – persönliche Fassung | Klaus Liebler, erstellt mit Suno (suno.com) | Nicht gemeinfrei – Nutzung nach den Suno-Bedingungen des erstellenden Kontos | Im Musikmanager wählbar.
 
 ## Gemeinfreie Klassik
 

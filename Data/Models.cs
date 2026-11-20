@@ -196,6 +196,8 @@ public class AppDb(DbContextOptions<AppDb> options) : DbContext(options)
             ""OwnerId"" INTEGER NOT NULL, ""Name"" TEXT NOT NULL, ""CreatedUtc"" TEXT NOT NULL)");
         Database.ExecuteSqlRaw(@"CREATE INDEX IF NOT EXISTS ""IX_QuizFolders_OwnerId"" ON ""QuizFolders"" (""OwnerId"")");
         if (!HasColumn("Quizzes", "FolderId")) Database.ExecuteSqlRaw(@"ALTER TABLE ""Quizzes"" ADD COLUMN ""FolderId"" INTEGER NULL");
+        // Umbenanntes Stück: gespeicherte Musikauswahl ("b:<datei>") nachziehen
+        Database.ExecuteSqlRaw(@"UPDATE ""Users"" SET ""MusicJson"" = REPLACE(""MusicJson"", '""b:podium_gehoert_euch.mp3""', '""b:podium_gehoert_euch_liebler.mp3""') WHERE ""MusicJson"" LIKE '%b:podium_gehoert_euch.mp3%'");
     }
 
     bool HasColumn(string table, string column)

@@ -81,8 +81,14 @@
   ],
   "extra": [
     {
-      "file": "podium_gehoert_euch.mp3",
-      "title": "Das Podium gehört euch",
+      "file": "podium_gehoert_euch_hsos.mp3",
+      "title": "Das Podium gehört euch (HSOS)",
+      "author": "Klaus Liebler (mit Suno erstellt)",
+      "introEnd": 23
+    },
+    {
+      "file": "podium_gehoert_euch_liebler.mp3",
+      "title": "Das Podium gehört euch (Liebler)",
       "author": "Klaus Liebler (mit Suno erstellt)",
       "introEnd": 18
     }
