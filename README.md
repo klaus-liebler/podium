@@ -13,8 +13,7 @@ nur mit einem selbst gewählten Spitznamen mit.
 ### Das kann Podium
 
 - 📱 **Beitreten in Sekunden:** QR-Code scannen oder PIN eingeben, Spitznamen wählen, fertig. Keine App, kein Konto.
-- 🎭 **Eigene Figur:** Figur, Kopfbedeckung und Hilfsmittel (Brille, Hörgerät, Gehstock) aussuchen. Die Figur steht live
-  in der 3D-Welt auf der Leinwand.
+- 🎭 **Eigene Figur:** Figur und Kopfbedeckung aussuchen. Die Figur steht live in der 3D-Welt auf der Leinwand.
 - 🌍 **Sieben 3D-Welten:** Gameshow-Studio, Campus-Insel, Weltraum-Arena, Stadion, Apfelwiese, Osnabrück und die
   *Ruhige Bühne*. Die Ruhige Bühne kommt ohne Bewegung und Effekte aus und ist für die Grundschule und neurodivergente
   Kinder gedacht.
