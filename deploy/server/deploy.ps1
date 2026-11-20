@@ -34,6 +34,14 @@ function Kit-Hochladen {
 
 if ($NurKit) { Kit-Hochladen; return }
 
+# Suno-Lieder sind nicht im Repository (kostenloser Tarif, keine Weiterverbreitung) – sie kommen nur aus der lokalen Kopie
+$suno = @("the_final_fanfare.mp3", "podium_gehoert_euch_hsos.mp3", "podium_gehoert_euch_liebler.mp3")
+$fehlend = $suno | Where-Object { -not (Test-Path (Join-Path $wurzel "web\public\music\$_")) }
+if ($fehlend) {
+    Write-Warning ("Suno-Lieder fehlen in web\public\music (nicht im Repository): {0}`nOhne sie bleibt die Siegerehrung auf dem Server ohne Sieger-Song." -f ($fehlend -join ", "))
+    if ((Read-Host "Trotzdem ausrollen? (j/n)") -ne "j") { return }
+}
+
 Write-Host "» Oberfläche bauen (web → wwwroot)" -ForegroundColor Cyan
 Push-Location (Join-Path $wurzel "web")
 try {
