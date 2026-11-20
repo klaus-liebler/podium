@@ -40,6 +40,7 @@ Entwicklung mit Hot-Reload: Backend per `dotnet run` starten, dann `cd web; npm 
 | `web/src/three/stage.ts` | gemeinsame 3D-Welt (Lobby → Fragen → Podest) |
 | `web/src/audio/engine.ts` | Musik-Decks mit Crossfade, Stoppuhr-Ticken, Spannungskurve, Fanfaren, Effekte |
 | `web/public/music/` | CC0-/gemeinfreie Musik (`tracks.json` ordnet Stücke den Stimmungen und Welten zu, Quellen in `CREDITS.md`) |
+| `docs/suno-songs.md` | Texte und Stilbeschreibungen der Suno-Stücke für die Siegerehrung (inkl. Entwürfe) |
 | `web/public/models/` | CC0-3D-Modelle von Kenney (Figuren, Natur, Stadt, Weltraum, Arena, Möbel) |
 | `web/src/three/themes/` | 3D-Welten: Gameshow-Studio, Campus-Insel, Weltraum-Arena, Stadion, Apfelwiese, Osnabrück, Ruhige Bühne (ohne Bewegung, für Grundschule/neurodivergente Kinder) |
 | `Music/MusicApi.cs`, `web/src/views/music-view.ts` | Musikmanager: Musik je Abschnitt (Warteraum, Fragestellung, Lösung & Statistik, Siegerehrung) pro Konto, eigene Uploads (`musik/` neben der Datenbank, Pfad per `MusicPath`) |

@@ -19,6 +19,8 @@ Eine Namensnennung ist nicht erforderlich, wir nennen die Urheber trotzdem gern:
 
 ## Eigene Stücke für die Siegerehrung (nicht CC0)
 
+Texte und Suno-Stilbeschreibungen: `docs/suno-songs.md` im Repository.
+
 | Datei | Titel | Urheber | Hinweis |
 |---|---|---|---|
 | the_final_fanfare.mp3 | The Final Fanfare (Standard für die Siegerehrung) | Klaus Liebler, erstellt mit Suno (suno.com) | Nicht gemeinfrei – Nutzung nach den Suno-Bedingungen des erstellenden Kontos |
