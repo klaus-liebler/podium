@@ -100,7 +100,7 @@ Entwicklung mit Hot-Reload: Backend per `dotnet run` starten, dann `cd web; npm 
 
 Dozierende melden sich mit eigenem Konto an (PBKDF2-Hash, Cookie, Sperre nach Fehlversuchen); jede·r sieht nur die eigenen
 Quizze. Solange die Datenbank kein Konto enthält, zeigt die Anmeldeseite die **Ersteinrichtung**: Dort legt man
-einmalig das Admin-Konto an (wie bei evcc, kein Passwort in Konfiguration oder Log). Weitere Konten per **Einladungslink** (👥 Benutzer), Passwort vergessen
+einmalig das Admin-Konto an (kein Passwort in Konfiguration oder Log). Weitere Konten per **Einladungslink** (👥 Benutzer), Passwort vergessen
 per **Passwort-Link**. Studierende brauchen keine Anmeldung.
 
 Betrieb unter einem Unterpfad: `PathBase=/podium`, `PublicBaseUrl=https://…/podium`. Server-Bereitstellung: [deploy/README.md](deploy/README.md).
