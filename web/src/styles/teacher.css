@@ -30,7 +30,7 @@ body.teacher button:hover, body.teacher .button:hover { border-color: var(--mute
 body.teacher button.primary, body.teacher .button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); font-weight: 600; }
 body.teacher button.danger { color: var(--danger); }
 body.teacher button:disabled { opacity: .5; cursor: default; }
-body.teacher input[type=text], body.teacher textarea, body.teacher select, body.teacher input[type=number] { font: inherit; padding: 7px 9px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--text); width: 100%; }
+body.teacher input[type=text], body.teacher input[type=password], body.teacher input[type=email], body.teacher input[type=search], body.teacher textarea, body.teacher select, body.teacher input[type=number] { font: inherit; padding: 7px 9px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--text); width: 100%; }
 body.teacher textarea { resize: vertical; min-height: 54px; }
 body.teacher label.field { display: block; margin-bottom: 12px; }
 body.teacher label.field > span { display: block; font-size: 13px; color: var(--muted); margin-bottom: 3px; font-weight: 600; }
