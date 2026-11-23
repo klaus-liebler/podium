@@ -5,6 +5,7 @@
 # Rückweg von Hand:  sudo bash /tmp/podium-kit/schritte/ausrollen.sh --zurueck
 # Laufende Spiele (im Speicher) gehen beim Neustart verloren – nicht während einer Vorlesung ausrollen.
 source "$(dirname "$0")/gemeinsam.sh"
+source "$(dirname "$0")/liebler-dotnet.sh"
 als_root
 
 DB=/var/lib/podium/podium.db
@@ -24,6 +25,8 @@ archiv="${1:?Pfad zum Archiv fehlt}"
 neu=$(mktemp -d /opt/podium.neu.XXXX)
 tar -xzf "$archiv" -C "$neu" --strip-components=1
 [[ -f "$neu/Podium" ]] || { rm -rf "$neu"; fehler "Archiv enthält kein Podium-Programm"; }
+# Framework-abhängiges Paket: passende gemeinsame Runtime vorhanden? (VibeVHS-Schritt 09) – sonst nichts ändern
+dotnet_pruefen "$neu" "Podium" || { rm -rf "$neu"; fehler "Ausrollen abgebrochen: Runtime fehlt (siehe oben). Nichts geändert."; }
 # Unter Windows gebaute Archive tragen keine Unix-Rechte: hier festlegen
 chown -R root:root "$neu"
 find "$neu" -type d -exec chmod 755 {} +

@@ -1,5 +1,5 @@
 # Podium (Live-Quiz) als systemd-Dienst – Ziel: /etc/systemd/system/podium.service (schritte/einrichten.sh)
-# Self-contained Linux-Build in /opt/podium (kein .NET auf dem Server nötig), Daten getrennt in /var/lib/podium.
+# Linux-Build in /opt/podium (framework-abhängig: gemeinsame ASP.NET-Core-Runtime aus VibeVHS-Schritt 09; mit deploy.ps1 -MitRuntime self-contained), Daten getrennt in /var/lib/podium.
 # Abweichungen/Geheimnisse stehen nur in /etc/podium/podium.env (root:podium, 0640), nie im Repository.
 [Unit]
 Description=Podium Live-Quiz

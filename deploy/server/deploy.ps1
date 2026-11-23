@@ -1,6 +1,6 @@
 ﻿<#
 .SYNOPSIS
-    Podium auf liebler.iui.hs-osnabrueck.de ausrollen: Oberfläche bauen (Vite, Single-File), self-contained Linux-Build,
+    Podium auf liebler.iui.hs-osnabrueck.de ausrollen: Oberfläche bauen (Vite, Single-File), framework-abhängiger Linux-Build (Runtime einmalig auf dem Server, VibeVHS-Schritt 09),
     Kit und Archiv hochladen, auf dem Server mit sudo einspielen (vorige Version bleibt als Rückweg, Datenbank-Sicherung
     vorher, Gesundheitsprüfung danach).
 .EXAMPLE
@@ -14,7 +14,9 @@ param(
     [string] $Ziel = "srvadmin@liebler.iui.hs-osnabrueck.de",
     [string] $Schluessel = "$env:USERPROFILE\.ssh\id_ed25519_liebler_iui_hs_osnabrueck",
     [switch] $NurKit,
-    [switch] $NurBauen
+    [switch] $NurBauen,
+    # Paket mit eigener .NET-Runtime (self-contained, ~70 statt ~20 MB) – nur, falls die gemeinsame Runtime fehlt
+    [switch] $MitRuntime
 )
 
 $ErrorActionPreference = "Stop"
@@ -50,10 +52,11 @@ try {
     if ($LASTEXITCODE -ne 0) { throw "Oberfläche: Build fehlgeschlagen." }
 } finally { Pop-Location }
 
-Write-Host "» dotnet publish (linux-x64, self-contained)" -ForegroundColor Cyan
+$eigeneRuntime = if ($MitRuntime) { "true" } else { "false" }
+Write-Host ("» dotnet publish (linux-x64, {0})" -f $(if ($MitRuntime) { "mit eigener Runtime" } else { "framework-abhängig" })) -ForegroundColor Cyan
 $build = Join-Path $ausgabe "podium"
 if (Test-Path $build) { Remove-Item $build -Recurse -Force }
-dotnet publish (Join-Path $wurzel "Podium.csproj") -c Release -r linux-x64 --self-contained true -o $build -p:DebugType=None
+dotnet publish (Join-Path $wurzel "Podium.csproj") -c Release -r linux-x64 --self-contained $eigeneRuntime -o $build -p:DebugType=None
 if ($LASTEXITCODE -ne 0) { throw "Build fehlgeschlagen." }
 Remove-Item (Join-Path $build "appsettings.Development.json") -ErrorAction SilentlyContinue
 Get-ChildItem $build -Filter "*.db*" | Remove-Item -Force   # lokale Entwicklungsdatenbank nie mitliefern

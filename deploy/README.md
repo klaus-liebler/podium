@@ -1,7 +1,7 @@
 # Podium auf liebler.iui.hs-osnabrueck.de
 
 Ziel: **https://liebler.iui.hs-osnabrueck.de/podium/** – hinter dem nginx, den das VibeVHS-Kit eingerichtet hat
-(Hochschulzertifikat, Reverse Proxy). Aufbau wie bei VibeVHS: self-contained Linux-Build, eigener Dienstbenutzer,
+(Hochschulzertifikat, Reverse Proxy). Aufbau wie bei VibeVHS: framework-abhängiger Linux-Build (gemeinsame ASP.NET-Core-Runtime aus VibeVHS-Schritt 09; `-MitRuntime` = self-contained), eigener Dienstbenutzer,
 Kestrel nur lokal, Ausrollen mit Sicherung und automatischem Rückweg. **Jeden Schritt startet Klaus selbst.**
 
 | | |
@@ -44,7 +44,7 @@ das Konto anlegen könnte: **direkt nach dem ersten Ausrollen** erledigen (`ausr
 .\deploy\server\deploy.ps1
 ```
 
-Baut die Oberfläche (`web`, `npm run build`) und das Programm (linux-x64, self-contained), lädt hoch, sichert die
+Baut die Oberfläche (`web`, `npm run build`) und das Programm (linux-x64, framework-abhängig), lädt hoch, sichert die
 Datenbank, ersetzt `/opt/podium` und prüft `http://127.0.0.1:5090/podium/gesund`. Antwortet die neue Version nicht,
 kommt die vorige automatisch zurück. Von Hand zurück: `ssh -t liebler "sudo bash /tmp/podium-kit/schritte/ausrollen.sh --zurueck"`.
 
