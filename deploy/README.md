@@ -7,8 +7,8 @@ Kestrel nur lokal, Ausrollen mit Sicherung und automatischem Rückweg. **Jeden S
 | | |
 |---|---|
 | Programm | `/opt/podium` (vorige Version: `/opt/podium.vorher`) · Dienst `podium.service`, Benutzer `podium` |
-| Daten | `/var/lib/podium/podium.db` (SQLite), Cookie-Schlüssel `/var/lib/podium/schluessel`, eigene Musik der Dozierenden `/var/lib/podium/musik` (Uploads bis 30 MB je Datei – nginx `client_max_body_size 130m`) |
-| Sicherungen | `/var/backups/podium` – täglich 01:45 (`podium-sicherung.timer`, 14 Tage) und vor jedem Update; Musik als fortlaufender Spiegel in `/var/backups/podium/musik` |
+| Daten | `/var/lib/podium/podium.db` (SQLite), Cookie-Schlüssel `/var/lib/podium/schluessel`, eigene Musik der Dozierenden `/var/lib/podium/musik` (Uploads bis 30 MB je Datei – nginx `client_max_body_size 130m`), Bilder in Fragen `/var/lib/podium/bilder` (bis 5 MB je Bild) |
+| Sicherungen | `/var/backups/podium` – täglich 01:45 (`podium-sicherung.timer`) und vor jedem Update, siehe [Sicherung](#sicherung) |
 | Geheimnisse | nur `/etc/podium/podium.env` (root:podium, 0640) – nie im Repository |
 | Port | `127.0.0.1:5090` (nur lokal), nach außen nginx `location /podium/` mit WebSockets (SignalR) |
 | Zugang | **kein** nginx-Passwort: Studierende treten per QR ohne Anmeldung bei; Dozentenbereich mit Konten in der App |
@@ -65,11 +65,34 @@ Den Link per Mail schicken; die Kollegin legt damit Benutzername und Passwort se
 **Passwort-Link** beim Konto. Die Tokens stehen hinter `#` in der Adresse und erreichen daher nie ein Server-Log; in der
 Datenbank liegt nur ihr SHA-256.
 
+## Sicherung
+
+`sicherung.sh` (installiert als `/opt/podium-werkzeuge/sicherung.sh`) läuft täglich um 01:45 und vor jedem Update:
+
+| Was | Ziel in `/var/backups/podium` | Aufbewahrung |
+|---|---|---|
+| Datenbank | `podium-<datum>-<zeit>.db` (Online-Sicherung, Integritätsprüfung) | **14 Tage**, ältere werden gelöscht |
+| Schlüssel (Cookies, SAML-Zertifikat) | `schluessel/` | nur der aktuelle Stand |
+| Musik | `musik/` (fortlaufender Spiegel) | **unbegrenzt** – neue Dateien kommen dazu, auf dem Server gelöschte bleiben im Spiegel |
+| Bilder in Fragen | `bilder/` (fortlaufender Spiegel) | **unbegrenzt**, wie Musik |
+
+Die Spiegel löschen bewusst nichts: Jede der 14 Datenbank-Sicherungen kann auf Musik oder Bilder verweisen, die inzwischen
+gelöscht wurden – nach einer Rücksicherung sind sie so noch vorhanden. Folge: Die Spiegel wachsen, und gelöschte Dateien
+verschwinden nicht aus der Sicherung.
+
+Die Sicherung liegt auf demselben Server; gegen Platten- oder Serververlust schützt sie nicht (dafür `/var/backups/podium`
+zusätzlich extern kopieren).
+
+**Achtung:** `deploy.ps1` spielt `sicherung.sh` nicht neu ein (nur `schritte/einrichten.sh`). Nach einer Änderung am Skript:
+`ssh liebler "sudo install -m 0755 /tmp/podium-kit/sicherung.sh /opt/podium-werkzeuge/sicherung.sh"` (nach `deploy.ps1 -NurKit`).
+
 ## Rücksicherung
 
 ```bash
 sudo systemctl stop podium
 sudo -u podium cp /var/backups/podium/podium-<datum>.db /var/lib/podium/podium.db   # -wal/-shm vorher beiseitelegen
+sudo -u podium cp -a --update /var/backups/podium/bilder/. /var/lib/podium/bilder/    # fehlende Bilder zurück (falls nötig)
+sudo -u podium cp -a --update /var/backups/podium/musik/. /var/lib/podium/musik/      # fehlende Musik zurück (falls nötig)
 sudo systemctl start podium
 ```
 
