@@ -84,7 +84,7 @@ public static class Saml
             acs.ServiceNames.Add(new LocalizedName("Podium", "de"));
             foreach (var (name, friendly, required) in new[]
             {
-                (AttrSubjectId, "subject-id", false), (AttrPairwiseId, "pairwise-id", false), (AttrEppn, "eduPersonPrincipalName", false),
+                (AttrSubjectId, "samlSubjectID", false), (AttrPairwiseId, "samlPairwiseID", false), (AttrEppn, "eduPersonPrincipalName", false),
                 (AttrAffiliation, "eduPersonScopedAffiliation", true), (AttrDisplayName, "displayName", false),
                 (AttrGivenName, "givenName", false), (AttrSurname, "sn", false), (AttrMail, "mail", true),
             })
