@@ -2,7 +2,7 @@
 import { html, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { LightElement } from "../core/util.ts";
-import { ApiError, api, getMe, setMe, teacherHeader, type Me } from "../core/session.ts";
+import { ApiError, api, getMe, setMe, ssoEnabled, teacherHeader, type Me } from "../core/session.ts";
 
 const fmt = (d: string | null) => d ? new Date(d).toLocaleString("de-DE", { dateStyle: "medium", timeStyle: "short" }) : "–";
 const val = (root: HTMLElement, id: string) => (root.querySelector<HTMLInputElement>("#" + id)?.value ?? "");
@@ -21,10 +21,15 @@ export class LoginView extends LightElement {
 	@state() private busy = false;
 	/** Ersteinrichtung: Datenbank enthält noch kein Konto -> erstes Admin-Konto anlegen */
 	@state() private setup = false;
+	/** Fehlermeldung nach Rückkehr vom Hochschul-Login (#/login?ssoerror=…) */
+	@property() ssoError = "";
+	@state() private sso = false;
 
 	override connectedCallback() {
 		super.connectedCallback();
 		document.body.className = "teacher"; document.title = "Podium – Anmeldung";
+		if (this.ssoError) this.error = this.ssoError;
+		void ssoEnabled().then(e => { this.sso = e; });
 		void getMe(true).then(m => { if (m) location.hash = this.next; });
 		void api<{ needed: boolean }>("auth/setup").then(s => {
 			this.setup = s.needed;
@@ -70,6 +75,8 @@ export class LoginView extends LightElement {
 				<h1>Podium</h1>
 				<p class="muted">Dozentenbereich – bitte anmelden.</p>
 				${this.error ? html`<div class="msg err" role="alert">${this.error}</div>` : nothing}
+				${this.sso ? html`<a class="button primary" href="api/auth/saml/login">Mit Hochschulkennung anmelden</a>
+					<p class="muted small">Für Mitarbeitende der Hochschule Osnabrück. Oder mit einem Podium-Konto:</p>` : nothing}
 				<label class="field"><span>Benutzername</span><input type="text" id="user" autocomplete="username" required></label>
 				<label class="field"><span>Passwort</span><input type="password" id="pw" autocomplete="current-password" required></label>
 				<button class="primary" type="submit" ?disabled=${this.busy}>Anmelden</button>
@@ -136,11 +143,13 @@ export class InviteView extends LightElement {
 export class AccountView extends LightElement {
 	@state() private me: Me | null = null;
 	@state() private msg: { text: string; ok: boolean } | null = null;
+	@state() private sso = false;
 
 	override connectedCallback() {
 		super.connectedCallback();
 		document.body.className = "teacher"; document.title = "Podium – Mein Konto";
-		void getMe().then(m => { this.me = m; if (!m) location.hash = "#/login"; });
+		void getMe(true).then(m => { this.me = m; if (!m) location.hash = "#/login"; });
+		void ssoEnabled().then(e => { this.sso = e; });
 	}
 
 	private async submit(e: Event) {
@@ -160,18 +169,21 @@ export class AccountView extends LightElement {
 				<h2>Mein Konto</h2>
 				${m ? html`<p>Angemeldet als <b>${m.displayName}</b> (${m.userName})${m.isAdmin ? " · Administrator·in" : ""}</p>` : nothing}
 				${this.msg ? html`<div class="msg ${this.msg.ok ? "ok" : "err"}">${this.msg.text}</div>` : nothing}
-				<form class="box" style="padding:16px;max-width:460px" @submit=${(e: Event) => this.submit(e)}>
+				${m?.sso ? html`<p>✓ Mit der Hochschulkennung verknüpft – Sie können sich über „Mit Hochschulkennung anmelden“ einloggen.</p>`
+					: this.sso && m ? html`<p><a class="button" href="api/auth/saml/login?link=true"
+						title="Danach können Sie sich mit Ihrer Hochschulkennung bei diesem Konto anmelden">Mit Hochschulkennung verknüpfen</a></p>` : nothing}
+				${m && !m.hasPassword ? nothing : html`<form class="box" style="padding:16px;max-width:460px" @submit=${(e: Event) => this.submit(e)}>
 					<label class="field"><span>Bisheriges Passwort</span><input type="password" id="old" autocomplete="current-password" required></label>
 					<label class="field"><span>Neues Passwort (mindestens 10 Zeichen)</span><input type="password" id="pw" autocomplete="new-password" minlength="10" required></label>
 					<label class="field"><span>Neues Passwort wiederholen</span><input type="password" id="pw2" autocomplete="new-password" minlength="10" required></label>
 					<button class="primary" type="submit">Passwort ändern</button>
-				</form>
+				</form>`}
 			</main>`;
 	}
 }
 
 // ---------------------------------------------------------------- Benutzerverwaltung (Admin)
-interface UserRow { id: number; userName: string; displayName: string; isAdmin: boolean; active: boolean; createdUtc: string; lastLoginUtc: string | null; quizzes: number; }
+interface UserRow { id: number; userName: string; displayName: string; isAdmin: boolean; active: boolean; createdUtc: string; lastLoginUtc: string | null; quizzes: number; sso: boolean; email: string | null; }
 interface InviteRow { id: number; note: string; isAdmin: boolean; createdUtc: string; expiresUtc: string; }
 
 @customElement("users-view")
@@ -256,8 +268,8 @@ export class UsersView extends LightElement {
 				<div class="box"><table>
 					<thead><tr><th>Name</th><th>Benutzer</th><th>Quizze</th><th>Zuletzt angemeldet</th><th></th></tr></thead>
 					<tbody>${this.users.map(u => html`<tr class=${u.active ? "" : "inactive"}>
-						<td><b>${u.displayName}</b>${u.isAdmin ? html` <span class="tag">Admin</span>` : nothing}${u.active ? nothing : html` <span class="tag off">deaktiviert</span>`}</td>
-						<td>${u.userName}</td><td>${u.quizzes}</td><td class="muted">${fmt(u.lastLoginUtc)}</td>
+						<td><b>${u.displayName}</b>${u.isAdmin ? html` <span class="tag">Admin</span>` : nothing}${u.active ? nothing : html` <span class="tag off">deaktiviert</span>`}${u.sso ? html` <span class="tag" title="Anmeldung mit Hochschulkennung">HS</span>` : nothing}</td>
+						<td>${u.userName}${u.email ? html`<br><span class="muted small">${u.email}</span>` : nothing}</td><td>${u.quizzes}</td><td class="muted">${fmt(u.lastLoginUtc)}</td>
 						<td class="actions">${u.id === this.me?.id ? html`<span class="muted">(Sie)</span>` : html`
 							<button @click=${() => this.reset(u)} title="Einmal-Link zum Setzen eines neuen Passworts">Passwort-Link</button>
 							<button @click=${() => this.saveUser(u, { isAdmin: !u.isAdmin })}>${u.isAdmin ? "Admin entziehen" : "Zum Admin machen"}</button>

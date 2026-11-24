@@ -2,7 +2,10 @@
 // Alle URLs sind relativ, damit die App auch unter einem Unterpfad läuft (z. B. /podium/).
 import { html, nothing } from "lit";
 
-export interface Me { id: number; userName: string; displayName: string; isAdmin: boolean; }
+export interface Me { id: number; userName: string; displayName: string; isAdmin: boolean; sso: boolean; hasPassword: boolean; }
+
+/** Hochschul-Login (SAML) eingerichtet? */
+export const ssoEnabled = (): Promise<boolean> => api<{ enabled: boolean }>("auth/saml").then(r => r.enabled).catch(() => false);
 
 export class ApiError extends Error {
 	constructor(public status: number, message: string, public data: Record<string, unknown> = {}) { super(message); }
@@ -19,7 +22,7 @@ export async function api<T = unknown>(path: string, init: RequestInit & { json?
 		headers: { ...(json !== undefined ? { "Content-Type": "application/json" } : {}), ...(rest.headers ?? {}) },
 		body: json !== undefined ? JSON.stringify(json) : rest.body,
 	});
-	if (r.status === 401 && !path.startsWith("auth/login") && !path.startsWith("auth/setup") && !path.startsWith("invite/")) {
+	if (r.status === 401 && !path.startsWith("auth/login") && !path.startsWith("auth/setup") && !path.startsWith("auth/saml") && !path.startsWith("invite/")) {
 		me = null;
 		toLogin();
 		throw new ApiError(401, "Bitte anmelden.");

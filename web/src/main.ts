@@ -35,7 +35,7 @@ export class PodiumApp extends LightElement {
 		const [path, query = ""] = this.route.replace(/^#\/?/, "").split("?");
 		const parts = path.split("/").filter(Boolean);
 		switch (parts[0]) {
-			case "login": return html`<login-view .next=${new URLSearchParams(query).get("next") ?? "#/"}></login-view>`;
+			case "login": { const q = new URLSearchParams(query); return html`<login-view .next=${q.get("next") ?? "#/"} .ssoError=${q.get("ssoerror") ?? ""}></login-view>`; }
 			case "invite": return html`<invite-view .token=${parts[1] ?? ""}></invite-view>`;
 			case "account": return html`<account-view></account-view>`;
 			case "users": return html`<users-view></users-view>`;

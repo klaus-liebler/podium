@@ -14,9 +14,10 @@ public static class AuthApi
 
     public static int UserId(this ClaimsPrincipal u) => int.Parse(u.FindFirstValue(ClaimTypes.NameIdentifier)!);
 
-    public static void AddPodiumAuth(this IServiceCollection services, IConfiguration cfg)
+    public static void AddPodiumAuth(this IServiceCollection services, IConfiguration cfg, string keysDir)
     {
-        services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
+        var auth = services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme);
+        auth
             .AddCookie(o =>
             {
                 o.Cookie.Name = "podium.anmeldung";
@@ -38,6 +39,7 @@ public static class AuthApi
                     if (user is not { Active: true } || Stamp(user) != stamp) { ctx.RejectPrincipal(); await ctx.HttpContext.SignOutAsync(); }
                 };
             });
+        auth.AddPodiumSaml(cfg, keysDir);   // Hochschul-Login, nur wenn konfiguriert
         services.AddAuthorizationBuilder().AddPolicy(AdminPolicy, p => p.RequireClaim("admin", "true"));
     }
 
@@ -143,7 +145,7 @@ public static class AuthApi
         // ------------------------------------------------------------ Benutzerverwaltung (nur Admins)
         var admin = api.MapGroup("/users").RequireAuthorization(AdminPolicy);
         admin.MapGet("", async (AppDb db) => await db.Users.OrderBy(u => u.UserName)
-            .Select(u => new { u.Id, u.UserName, u.DisplayName, u.IsAdmin, u.Active, u.CreatedUtc, u.LastLoginUtc, Quizzes = db.Quizzes.Count(q => q.OwnerId == u.Id) })
+            .Select(u => new { u.Id, u.UserName, u.DisplayName, u.IsAdmin, u.Active, u.CreatedUtc, u.LastLoginUtc, Sso = u.SsoId != null, u.Email, Quizzes = db.Quizzes.Count(q => q.OwnerId == u.Id) })
             .ToListAsync());
 
         admin.MapPut("/{id:int}", async (int id, UserEdit req, AppDb db, ClaimsPrincipal p) =>
@@ -258,9 +260,9 @@ public static class AuthApi
 
     static readonly string Dummy =Passwords.Hash(Guid.NewGuid().ToString());
 
-    static object Me(User u) => new { u.Id, u.UserName, u.DisplayName, u.IsAdmin };
+    static object Me(User u) => new { u.Id, u.UserName, u.DisplayName, u.IsAdmin, sso = u.SsoId != null, hasPassword = u.PasswordHash.Length > 0 };
 
-    static Task SignIn(HttpContext ctx, User u)
+    internal static Task SignIn(HttpContext ctx, User u)
     {
         var claims = new List<Claim>
         {

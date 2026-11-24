@@ -23,6 +23,10 @@ Environment=PathBase=/podium
 Environment=PublicBaseUrl=https://liebler.iui.hs-osnabrueck.de/podium
 Environment=DbPath=/var/lib/podium/podium.db
 Environment=KeysPath=/var/lib/podium/schluessel
+# Hochschul-Login (SAML) über den Shibboleth-IdP der Hochschule. SP-Metadaten: …/podium/Saml2,
+# Schlüssel/Zertifikat des SP: /var/lib/podium/schluessel/saml-sp.pfx (wird beim ersten Start erzeugt – nicht löschen,
+# sonst muss das Rechenzentrum die Metadaten neu einlesen). Zum Abschalten die Zeile entfernen.
+Environment=Saml__IdpEntityId=https://shib-idp.hs-osnabrueck.de/idp/shibboleth
 Environment=HOME=/var/lib/podium
 Environment=DOTNET_NOLOGO=1
 Environment=DOTNET_CLI_TELEMETRY_OPTOUT=1

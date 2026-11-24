@@ -13,6 +13,7 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="11.0.0" />
     <PackageReference Include="QRCoder" Version="1.8.1" />
+    <PackageReference Include="Sustainsys.Saml2.AspNetCore2" Version="2.11.2" />
   </ItemGroup>
 
   <!-- Oberflächen-Quellen (Vite/Lit, inkl. node_modules) und Deploy-Kit gehören nicht ins .NET-Projekt;

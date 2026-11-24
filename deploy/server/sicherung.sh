@@ -11,4 +11,6 @@ sqlite3 "$DB" ".backup '$datei'"
 find "$ZIEL" -name 'podium-*.db' -mtime +14 -delete
 echo "gesichert: $datei"
 # Eigene Musik der Dozierenden (Musikmanager): Spiegel ergänzen (Dateinamen sind eindeutig, gelöschte bleiben in der Sicherung)
+# Schlüssel (Anmelde-Cookies, SAML-Zertifikat des Hochschul-Logins) – nur der jeweils aktuelle Stand
+if [[ -d /var/lib/podium/schluessel ]]; then mkdir -p "$ZIEL/schluessel"; chmod 700 "$ZIEL/schluessel"; cp -a /var/lib/podium/schluessel/. "$ZIEL/schluessel/"; echo "Schlüssel gesichert: $ZIEL/schluessel"; fi
 if [[ -d /var/lib/podium/musik ]]; then mkdir -p "$ZIEL/musik"; cp -a --update /var/lib/podium/musik/. "$ZIEL/musik/"; echo "Musik gesichert: $ZIEL/musik"; fi

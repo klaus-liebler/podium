@@ -16,6 +16,10 @@ public class User
     public DateTime? LastLoginUtc { get; set; }
     /// <summary>Musikauswahl je Spielabschnitt (JSON, siehe Music/MusicApi.cs)</summary>
     public string MusicJson { get; set; } = "{}";
+    /// <summary>Hochschul-Login: dauerhafte Kennung vom IdP (subject-id/pairwise-id/eppn); null = nur lokales Konto</summary>
+    public string? SsoId { get; set; }
+    /// <summary>Hochschul-Login: E-Mail-Adresse laut IdP (bei jeder Anmeldung aktualisiert)</summary>
+    public string? Email { get; set; }
 }
 
 /// <summary>Eigenes, hochgeladenes Musikstück eines Kontos. Datei liegt unter StoredName im Musikordner.</summary>
@@ -195,6 +199,9 @@ public class AppDb(DbContextOptions<AppDb> options) : DbContext(options)
             ""Id"" INTEGER NOT NULL CONSTRAINT ""PK_QuizFolders"" PRIMARY KEY AUTOINCREMENT,
             ""OwnerId"" INTEGER NOT NULL, ""Name"" TEXT NOT NULL, ""CreatedUtc"" TEXT NOT NULL)");
         Database.ExecuteSqlRaw(@"CREATE INDEX IF NOT EXISTS ""IX_QuizFolders_OwnerId"" ON ""QuizFolders"" (""OwnerId"")");
+        if (!HasColumn("Users", "SsoId")) Database.ExecuteSqlRaw(@"ALTER TABLE ""Users"" ADD COLUMN ""SsoId"" TEXT NULL");
+        if (!HasColumn("Users", "Email")) Database.ExecuteSqlRaw(@"ALTER TABLE ""Users"" ADD COLUMN ""Email"" TEXT NULL");
+        Database.ExecuteSqlRaw(@"CREATE UNIQUE INDEX IF NOT EXISTS ""IX_Users_SsoId"" ON ""Users"" (""SsoId"")");
         if (!HasColumn("Quizzes", "FolderId")) Database.ExecuteSqlRaw(@"ALTER TABLE ""Quizzes"" ADD COLUMN ""FolderId"" INTEGER NULL");
         // Umbenanntes Stück: gespeicherte Musikauswahl ("b:<datei>") nachziehen
         Database.ExecuteSqlRaw(@"UPDATE ""Users"" SET ""MusicJson"" = REPLACE(""MusicJson"", '""b:podium_gehoert_euch.mp3""', '""b:podium_gehoert_euch_liebler.mp3""') WHERE ""MusicJson"" LIKE '%b:podium_gehoert_euch.mp3%'");

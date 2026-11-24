@@ -17,9 +17,9 @@ var dbPath = builder.Configuration["DbPath"] ?? Path.Combine(builder.Environment
 builder.Services.AddDbContext<AppDb>(o => o.UseSqlite($"Data Source={dbPath}"));
 builder.Services.AddSignalR();
 builder.Services.AddSingleton<GameManager>();
-builder.Services.AddPodiumAuth(builder.Configuration);
 // Schlüssel für Anmelde-Cookies dauerhaft ablegen (sonst sind nach jedem Neustart alle abgemeldet)
 var keysPath = builder.Configuration["KeysPath"] ?? Path.Combine(Path.GetDirectoryName(Path.GetFullPath(dbPath))!, "schluessel");
+builder.Services.AddPodiumAuth(builder.Configuration, keysPath);   // inkl. Hochschul-Login (SAML), falls konfiguriert
 builder.Services.AddDataProtection().PersistKeysToFileSystem(new DirectoryInfo(keysPath)).SetApplicationName("Podium");
 builder.Services.AddHttpClient("import", c =>
 {
@@ -83,6 +83,7 @@ var mime = new Microsoft.AspNetCore.StaticFiles.FileExtensionContentTypeProvider
 mime.Mappings[".glb"] = "model/gltf-binary";
 mime.Mappings[".gltf"] = "model/gltf+json";
 app.UseStaticFiles(new StaticFileOptions { ContentTypeProvider = mime });
+app.UseSamlErrors();   // Fehler am SAML-ACS sichtbar machen statt leerer 500-Seite
 app.UseAuthentication();
 app.UseAuthorization();
 
@@ -93,6 +94,7 @@ app.MapGet("/gesund", () => Results.Text($"ok {typeof(Program).Assembly.GetName(
 
 var api = app.MapGroup("/api");
 api.MapAuth();
+api.MapSaml(app.Configuration);
 api.MapInvites();
 api.MapMusic(MusicApi.Dir(app.Configuration, dbPath));
 
