@@ -8,6 +8,7 @@ import { LETTERS, LightElement, SHAPE_NAMES, Timers, connectHub, fmtInt, isDarkT
 import { COLORS, FIGURE_PARTS, norm, randomAvatar } from "../core/avatar.ts";
 import { LivePreview, figureImg } from "../three/portrait.ts";
 import { confetti } from "../core/confetti.ts";
+import { md, mdPlain } from "../core/markdown.ts";
 import type { AvatarSpec, PlayerDirect, PlayerState } from "../core/types.ts";
 
 const av = (a: AvatarSpec) => figureImg(a); // Porträt der 3D-Figur
@@ -310,7 +311,7 @@ export class PlayerView extends LightElement {
 				<button class="edit-link" @click=${() => { this.avatar = norm(s.me.avatar); this.screen = "editAvatar"; }}>Figur ändern</button>`;
 			case "intro": return html`
 				<div class="pill">Frage ${s.questionIndex + 1} von ${s.questionCount}</div>
-				<div class="p-q">${s.question!.text}</div>
+				<div class="p-q">${md(s.question!.text)}</div>
 				${s.question!.multi ? html`<div class="pill multi-hint">☑ Mehrere Antworten richtig</div>` : nothing}
 				${loader}<p class="muted">Mach dich bereit!</p>`;
 			case "answering": {
@@ -319,13 +320,13 @@ export class PlayerView extends LightElement {
 					<div aria-label="Deine Auswahl">${this.chips(s.answer.choices)}</div>${loader}<p class="muted">${this.waitingText}</p>`;
 				const q = s.question!;
 				return html`
-					<div class="p-q">${q.text}</div>
+					<div class="p-q">${md(q.text)}</div>
 					${q.multi ? html`<div class="multi-hint">☑ Wähle alle richtigen Antworten</div>` : nothing}
 					<div class="p-tiles n${q.optionCount} ${this.sending ? "locked" : ""}" role="group" aria-label="Antwortmöglichkeiten">
 						${q.options.map((o, i) => html`<button class="p-tile c${i} ${isDarkText(i) ? "dark" : ""} ${this.selection.has(i) ? "sel" : ""}"
 							style="animation-delay:${i * 50}ms" aria-pressed=${q.multi ? String(this.selection.has(i)) : nothing}
-							aria-label="${LETTERS[i]}, ${SHAPE_NAMES[i]}: ${o}" @click=${() => this.tap(i)}>
-							<span class="key">${shape(i)}<b>${LETTERS[i]}</b></span><span class="txt">${o}</span></button>`)}
+							aria-label="${LETTERS[i]}, ${SHAPE_NAMES[i]}: ${mdPlain(o)}" @click=${() => this.tap(i)}>
+							<span class="key">${shape(i)}<b>${LETTERS[i]}</b></span><div class="txt">${md(o)}</div></button>`)}
 					</div>
 					${q.multi ? html`<div class="submit-row"><button class="btn primary big" ?disabled=${!this.selection.size || this.sending} @click=${() => this.send()}>
 						${this.selection.size ? `Abschicken (${this.selection.size} gewählt)` : "Antwort abschicken"}</button></div>` : nothing}`;

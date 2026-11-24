@@ -31,6 +31,13 @@ internal static partial class QuizImport
         return s.Length > max ? s[..max] : s;
     }
 
+    /// <summary>Podium-Export: Text ist Markdown – Zeilenumbrüche und Zeichen wie &lt; erhalten, nur kürzen.</summary>
+    static string CleanMd(string? s, int max)
+    {
+        s = (s ?? "").Replace("\r\n", "\n").Replace('\r', '\n').Trim();
+        return s.Length > max ? s[..max] : s;
+    }
+
     // ---------------------------------------------------------------- Kahoot-Link
 
     public static async Task<Result> FromKahootUrlAsync(string url, HttpClient http)
@@ -79,8 +86,8 @@ internal static partial class QuizImport
                 // Podium-Export
                 if (q.TryGetProperty("options", out var opts))
                 {
-                    var o = opts.EnumerateArray().Select(x => new OptionDto(Clean(Str(x, "text"), 150), x.TryGetProperty("isCorrect", out var c) && c.ValueKind == JsonValueKind.True)).ToList();
-                    Add(questions, warnings, n, Clean(Str(q, "text"), 400), o, Num(q, "timeLimitSeconds") ?? 20, (int)(Num(q, "pointsMultiplier") ?? 1));
+                    var o = opts.EnumerateArray().Select(x => new OptionDto(CleanMd(Str(x, "text"), 300), x.TryGetProperty("isCorrect", out var c) && c.ValueKind == JsonValueKind.True)).ToList();
+                    Add(questions, warnings, n, CleanMd(Str(q, "text"), 1000), o, Num(q, "timeLimitSeconds") ?? 20, (int)(Num(q, "pointsMultiplier") ?? 1));
                     continue;
                 }
                 // Kahoot

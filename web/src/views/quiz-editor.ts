@@ -1,14 +1,15 @@
 // Quiz-Editor: beliebig viele Fragen, je 2–6 Antworten, 1..n richtig, Zeit und Punkte pro Frage.
 import { html, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
-import { LETTERS, LightElement, shape } from "../core/util.ts";
+import { LETTERS, LightElement, shape, toast } from "../core/util.ts";
 import type { QuestionDto, QuizDto } from "../core/types.ts";
+import "./md-input.ts";
 import { ApiError, api, getMe, teacherHeader, type Me } from "../core/session.ts";
 
 const TIMES = [5, 10, 15, 20, 30, 45, 60, 90, 120, 180, 240];
 const blankQ = (): QuestionDto => ({
 	text: "", timeLimitSeconds: 20, pointsMultiplier: 1,
-	options: [{ text: "", isCorrect: true }, { text: "", isCorrect: false }, { text: "", isCorrect: false }, { text: "", isCorrect: false }],
+	options: [{ text: "", isCorrect: false }, { text: "", isCorrect: false }, { text: "", isCorrect: false }, { text: "", isCorrect: false }],
 });
 
 @customElement("quiz-editor")
@@ -19,6 +20,8 @@ export class QuizEditor extends LightElement {
 	@state() private quiz: QuizDto = { id: 0, title: "", description: "", questions: [] };
 	@state() private msg: { text: string; ok: boolean } | null = null;
 	@state() private loading = true;
+	/** nach dem ersten Speicherversuch: Probleme direkt an den Fragen anzeigen */
+	@state() private checked = false;
 
 	override connectedCallback() {
 		super.connectedCallback();
@@ -51,11 +54,31 @@ export class QuizEditor extends LightElement {
 		this.touch();
 	}
 
+	/** Probleme einer Frage (leer = in Ordnung) */
+	private problems(q: QuestionDto): string[] {
+		const p: string[] = [];
+		if (!q.text.trim()) p.push("Fragetext fehlt.");
+		q.options.forEach((o, i) => { if (!o.text.trim()) p.push(`Antwort ${LETTERS[i]} ist leer.`); });
+		if (!q.options.some(o => o.isCorrect)) p.push("Keine Antwort als richtig markiert.");
+		return p;
+	}
+
 	private async save() {
+		this.checked = true;
+		if (!this.quiz.title.trim()) { this.touch(); toast("Bitte einen Titel angeben.", 4000, "err"); this.querySelector<HTMLInputElement>("input.title")?.focus(); return; }
+		const bad = this.quiz.questions.findIndex(q => this.problems(q).length);
+		if (bad >= 0) {
+			this.touch();
+			await this.updateComplete;
+			this.querySelectorAll(".box.q")[bad]?.scrollIntoView({ behavior: "smooth", block: "center" });
+			toast(`Frage ${bad + 1}: ${this.problems(this.quiz.questions[bad])[0]}`, 4000, "err");
+			return;
+		}
 		let d: { id: number };
 		try { d = await api(this.quizId ? `quizzes/${this.quizId}` : "quizzes", { method: this.quizId ? "PUT" : "POST", json: this.quiz }); }
 		catch (e) { this.msg = { text: (e as Error).message, ok: false }; scrollTo({ top: 0, behavior: "smooth" }); return; }
-		this.msg = { text: "Gespeichert.", ok: true };
+		this.msg = null;
+		toast("Quiz gespeichert.");
 		if (!this.quizId) location.hash = `#/edit/${d.id}`;
 	}
 
@@ -68,13 +91,15 @@ export class QuizEditor extends LightElement {
 				${this.loading ? html`<div class="box empty">Lade …</div>` : html`
 				<div class="box" style="padding:16px;margin-bottom:16px">
 					<label class="field"><span>Titel</span>
-						<input type="text" maxlength="120" .value=${this.quiz.title} @input=${(e: InputEvent) => { this.quiz.title = (e.target as HTMLInputElement).value; }}></label>
+						<input type="text" class="title" maxlength="120" .value=${this.quiz.title} @input=${(e: InputEvent) => { this.quiz.title = (e.target as HTMLInputElement).value; }}></label>
 					<label class="field" style="margin-bottom:0"><span>Beschreibung (optional)</span>
 						<input type="text" maxlength="300" .value=${this.quiz.description ?? ""} @input=${(e: InputEvent) => { this.quiz.description = (e.target as HTMLInputElement).value; }}></label>
 				</div>
 				${qs.length === 0 ? html`<div class="box empty">Noch keine Fragen.</div>` : nothing}
-				${qs.map((q, qi) => html`
-					<div class="box q">
+				${qs.map((q, qi) => {
+					const probs = this.checked ? this.problems(q) : [];
+					return html`
+					<div class="box q ${probs.length ? "invalid" : ""}">
 						<div class="q-head">
 							<b>Frage ${qi + 1}</b>
 							<button ?disabled=${qi === 0} title="Nach oben" @click=${() => this.act(qi, "up")}>↑</button>
@@ -82,8 +107,10 @@ export class QuizEditor extends LightElement {
 							<button @click=${() => this.act(qi, "dup")}>Duplizieren</button>
 							<button class="danger" @click=${() => this.act(qi, "del")}>Löschen</button>
 						</div>
-						<label class="field"><span>Fragetext</span>
-							<textarea maxlength="400" .value=${q.text} @input=${(e: InputEvent) => { this.q(qi).text = (e.target as HTMLTextAreaElement).value; }}></textarea></label>
+						${probs.length ? html`<div class="q-problems" role="alert">${probs.map(p => html`<span>⚠ ${p}</span>`)}</div>` : nothing}
+						<div class="field"><span>Fragetext</span>
+							<md-input .value=${q.text} maxlength="1000" rows="2" placeholder="Fragetext"
+								.onValue=${(v: string) => { this.q(qi).text = v; if (this.checked) this.touch(); }}></md-input></div>
 						<div class="q-meta">
 							<label class="field"><span>Antwortzeit</span>
 								<select @change=${(e: Event) => { this.q(qi).timeLimitSeconds = Number((e.target as HTMLSelectElement).value); }}>
@@ -100,14 +127,15 @@ export class QuizEditor extends LightElement {
 						${q.options.map((o, oi) => html`
 							<div class="opt">
 								<span class="badge c${oi}">${shape(oi)}${LETTERS[oi]}</span>
-								<input type="text" maxlength="150" placeholder="Antwort ${LETTERS[oi]}" .value=${o.text}
-									@input=${(e: InputEvent) => { o.text = (e.target as HTMLInputElement).value; }}>
+								<md-input .value=${o.text} maxlength="300" rows="1" placeholder="Antwort ${LETTERS[oi]}"
+									.onValue=${(v: string) => { o.text = v; if (this.checked) this.touch(); }}></md-input>
 								<label class="correct"><input type="checkbox" .checked=${o.isCorrect}
-									@change=${(e: Event) => { o.isCorrect = (e.target as HTMLInputElement).checked; }}> richtig</label>
+									@change=${(e: Event) => { o.isCorrect = (e.target as HTMLInputElement).checked; this.touch(); }}> richtig</label>
 								<button ?disabled=${q.options.length <= 2} title="Antwort entfernen" @click=${() => this.act(qi, "delopt", oi)}>✕</button>
 							</div>`)}
 						<button ?disabled=${q.options.length >= 6} @click=${() => this.act(qi, "addopt")}>+ Antwort</button>
-					</div>`)}
+					</div>`;
+				})}
 				<div class="toolbar">
 					<button @click=${() => { qs.push(blankQ()); this.touch(); }}>+ Frage hinzufügen</button>
 					<span class="spacer"></span>

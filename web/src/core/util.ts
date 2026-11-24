@@ -61,3 +61,12 @@ export class Timers {
 	raf(fn: FrameRequestCallback) { const id = requestAnimationFrame(fn); this.rafs.push(id); return id; }
 	clear() { this.ids.forEach(clearTimeout); this.rafs.forEach(cancelAnimationFrame); this.ids = []; this.rafs = []; }
 }
+
+/** Kurze Meldung unten am Bildschirmrand, verschwindet nach `ms` von selbst. */
+export function toast(text: string, ms = 3000, kind: "ok" | "err" = "ok") {
+	document.querySelector(".toast")?.remove();
+	const el = Object.assign(document.createElement("div"), { className: `toast ${kind}`, textContent: text });
+	el.setAttribute("role", "status");
+	document.body.append(el);
+	setTimeout(() => { el.classList.add("out"); setTimeout(() => el.remove(), 300); }, ms);
+}

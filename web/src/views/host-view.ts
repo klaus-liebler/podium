@@ -13,6 +13,7 @@ import type { DirectSpec, HostDirect, HostPlayer, HostQuestion, HostState, Phase
 import { api } from "../core/session.ts";
 import { resolveMusic, type MusicConfig } from "../audio/music-config.ts";
 import { PreviewSim } from "./preview-sim.ts";
+import { md, mdPlain } from "../core/markdown.ts";
 import "./direct-results.ts";
 import "./direct-composer.ts";
 
@@ -445,7 +446,7 @@ export class HostView extends LightElement {
 	private intro(s: HostState, q: HostQuestion) {
 		return html`<section class="screen enter intro">
 			<div class="pill q-counter">Frage ${s.questionIndex + 1} von ${s.questionCount}</div>
-			<div class="card question-card">${q.text}</div>
+			<div class="card question-card">${md(q.text)}</div>
 			<div class="meta">
 				<span class="pill">⏱ ${q.timeLimit} Sekunden</span>
 				${q.multi ? html`<span class="pill">☑ Mehrere Antworten richtig</span>` : nothing}
@@ -457,8 +458,8 @@ export class HostView extends LightElement {
 
 	private tiles(q: HostQuestion, reveal = false) {
 		return html`<div class="tiles n${q.options.length}">${q.options.map((o, i) => html`
-			<div class="tile c${i} ${reveal ? (o.correct ? "right" : "dim") : ""}" style="animation-delay:${i * 70}ms" aria-label="${optionLabel(i)}: ${o.text}">
-				<span class="key">${shape(i)}<b>${LETTERS[i]}</b></span><span class="txt">${o.text}</span>
+			<div class="tile c${i} ${reveal ? (o.correct ? "right" : "dim") : ""}" style="animation-delay:${i * 70}ms" aria-label="${optionLabel(i)}: ${mdPlain(o.text)}">
+				<span class="key">${shape(i)}<b>${LETTERS[i]}</b></span><div class="txt">${md(o.text)}</div>
 				${reveal ? html`<span class="mark">${o.correct ? "✓" : "✗"}</span>` : nothing}
 			</div>`)}</div>`;
 	}
@@ -466,7 +467,7 @@ export class HostView extends LightElement {
 	private answering(s: HostState, q: HostQuestion) {
 		const R = 54, C = 2 * Math.PI * R;
 		return html`<section class="screen enter answering">
-			<div class="card question-card">${q.text}</div>
+			<div class="card question-card">${md(q.text)}</div>
 			<div class="mid-row">
 				<div class="answer-count"><div class="n" id="ansCount">${s.answeredCount}</div><div class="l">von ${s.connectedCount} Antworten</div></div>
 				<div class="timer" id="timer">
@@ -485,7 +486,7 @@ export class HostView extends LightElement {
 		const max = Math.max(1, ...dist);
 		const pct = s.answeredCount ? Math.round(100 * s.correctCount / s.answeredCount) : 0;
 		return html`<section class="screen enter reveal">
-			<div class="card question-card">${q.text}</div>
+			<div class="card question-card">${md(q.text)}</div>
 			<div class="chart">${q.options.map((o, i) => html`
 				<div class="col ${o.correct ? "right" : "wrong"}" aria-label="${optionLabel(i)}: ${dist[i]} Stimmen${o.correct ? ", richtig" : ""}">
 					<div class="val">${dist[i]}</div>
@@ -554,11 +555,11 @@ export class HostView extends LightElement {
 						const pct = q.players ? Math.round(100 * q.correct / q.players) : 0;
 						const max = Math.max(1, ...q.distribution);
 						return html`<div class="q-stat">
-							<div class="qt">${i + 1}. ${q.text}</div>
+							<div class="qt">${i + 1}. ${mdPlain(q.text)}</div>
 							<div class="meter"><i style="width:${pct}%"></i></div>
 							<div class="info"><span>${pct} % richtig (${q.correct}/${q.players})</span><span>Ø ${fmtSecs(q.avgMs)} s</span></div>
 							<div class="mini">${q.distribution.map((d, j) => html`<span class="c${j} ${q.options[j].correct ? "ok" : ""}" style="height:${(d / max) * 100}%"
-								title="${optionLabel(j)}: ${q.options[j].text} – ${d}"></span>`)}</div>
+								title="${optionLabel(j)}: ${mdPlain(q.options[j].text)} – ${d}"></span>`)}</div>
 						</div>`;
 					})}</div>
 				</div>
