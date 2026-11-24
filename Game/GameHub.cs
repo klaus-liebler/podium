@@ -24,6 +24,10 @@ public sealed class GameHub(GameManager games) : Hub
     public Task HostFinish(string pin, string hostKey) => games.FinishEarlyAsync(HostGame(pin, hostKey));
     public Task HostClose(string pin, string hostKey) => games.CloseAsync(HostGame(pin, hostKey));
     public Task HostKick(string pin, string hostKey, string playerId) => games.KickAsync(HostGame(pin, hostKey), playerId);
+    public Task HostSkip(string pin, string hostKey) => games.SkipAsync(HostGame(pin, hostKey));
+    /// <summary>Fernbedienung → Leinwand: reine Anzeige-Befehle (Sieger-Song, Ton), die nur die Leinwand ausführt</summary>
+    public Task HostCommand(string pin, string hostKey, string cmd) =>
+        cmd is "song-end" or "song-intro" or "mute" or "unmute" or "direct" ? games.CommandAsync(HostGame(pin, hostKey), cmd) : Task.CompletedTask;
 
     // DirectMode: spontane Fragen
     public Task<string?> HostDirectStart(string pin, string hostKey, DirectSpec spec) => games.DirectStartAsync(HostGame(pin, hostKey), spec);
@@ -79,7 +83,19 @@ public sealed class GameHub(GameManager games) : Hub
     {
         var g = games.Get(pin);
         if (g == null) return false;
-        var ok = await games.AnswerAsync(g, Context.ConnectionId, questionIndex, choices);
+        return await Answered(g, await games.AnswerAsync(g, Context.ConnectionId, questionIndex, choices));
+    }
+
+    /// <summary>Schätzfrage: Zahl abgeben</summary>
+    public async Task<bool> PlayerEstimate(string pin, int questionIndex, double number)
+    {
+        var g = games.Get(pin);
+        if (g == null) return false;
+        return await Answered(g, await games.AnswerAsync(g, Context.ConnectionId, questionIndex, null, number));
+    }
+
+    async Task<bool> Answered(Game g, bool ok)
+    {
         if (ok)
         {
             Player? p;

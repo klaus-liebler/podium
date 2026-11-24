@@ -376,3 +376,39 @@ body.calm .tile::before { display: none; }
 :is(.question-card, .p-q, .p-tile) .md :is(ul, ol, blockquote, pre, table) { width: fit-content; max-width: 100%; margin-inline: auto; }
 /* Links in Antwortkacheln am Handy nicht anklickbar (die Kachel ist der Knopf) */
 .p-tile .md a { pointer-events: none; }
+
+/* ---------------------------------------------------------------- Bilder, Erklärung, Schätzfrage, Reihenfolge (Leinwand) */
+.question-card .md-img { max-height: 32vh; }
+.tile .md-img, .p-tile .md-img { max-height: 14vh; margin: 2px auto; }
+.card.explain, .p-explain { display: flex; gap: .5em; align-items: flex-start; }
+.card.explain .md > :first-child, .p-explain .md > :first-child { margin-top: 0; }
+.card.explain .md > :last-child, .p-explain .md > :last-child { margin-bottom: 0; }
+.card.explain { max-width: min(1100px, 90vw); padding: 14px 26px; font-size: clamp(1rem, 1.6vw, 1.6rem); font-weight: 500; text-align: left; line-height: 1.35;
+  border-left: 8px solid #f5b02a; animation: bubbleIn .5s 1.2s both; }
+.reveal.has-explain .chart { padding-top: 56px; }
+.estimate-result { width: min(1000px, 90vw); padding: 24px 30px; display: flex; flex-direction: column; align-items: center; gap: 16px; animation: introPop .7s both; }
+.estimate-result .big-value { font-size: clamp(3rem, 8vw, 7rem); font-weight: 800; line-height: 1; display: flex; flex-direction: column; align-items: center; text-shadow: 0 6px 0 rgba(0, 0, 0, .25); }
+.estimate-result .big-value small { font-size: clamp(1rem, 1.4vw, 1.4rem); font-weight: 600; opacity: .85; text-shadow: none; margin: 6px 0; }
+.estimate-result .est-stats, .estimate-result .closest { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
+.estimate-result .pill { font-size: 1.2rem; }
+.estimate-result .closest .pill { background: rgba(255, 255, 255, .95); color: var(--ink); animation: bubbleIn .5s 1.4s both; }
+.order-result { list-style: none; margin: 0; padding: 18px 24px; width: min(900px, 88vw); display: flex; flex-direction: column; gap: 10px; }
+.order-result li { display: flex; align-items: center; gap: 16px; padding: 10px 18px; border-radius: 16px; background: rgba(255, 255, 255, .95); color: var(--ink);
+  font-size: clamp(1.2rem, 2vw, 2rem); font-weight: 600; animation: rowIn .6s cubic-bezier(.2, 1.2, .3, 1) both; }
+.order-result li b { width: 1.8em; height: 1.8em; flex: none; border-radius: 12px; display: grid; place-items: center; background: var(--ink); color: #fff; }
+.q-stat.skipped { opacity: .55; }
+.remote-overlay { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; background: rgba(0, 0, 0, .55); }
+.remote-overlay .panel { padding: 24px 30px; text-align: center; max-width: 420px; }
+.remote-overlay img { width: 280px; height: 280px; background: #fff; border-radius: 16px; }
+
+/* Handy: Schätzfrage, Reihenfolge, Erklärung */
+.p-explain { text-align: left; max-width: 560px; padding: 10px 14px; border-radius: 14px; background: rgba(255, 255, 255, .14); border-left: 5px solid #f5b02a; font-size: 1rem; line-height: 1.4; }
+.p-order { text-align: left; margin: 6px auto; padding-left: 1.6em; max-width: 480px; }
+.p-order.small { font-size: 1rem; }
+.p-order-pick { display: grid; gap: 10px; width: 100%; max-width: 520px; }
+.p-ord { display: flex; align-items: center; gap: 12px; padding: 14px; border-radius: 16px; border: 2px solid rgba(255, 255, 255, .35); background: rgba(255, 255, 255, .12);
+  color: inherit; font: inherit; font-size: 1.1rem; font-weight: 600; text-align: left; cursor: pointer; }
+.p-ord .num { width: 2em; height: 2em; flex: none; border-radius: 50%; display: grid; place-items: center; border: 2px dashed rgba(255, 255, 255, .5); font-weight: 800; }
+.p-ord.sel { background: rgba(255, 255, 255, .95); color: #1b1340; border-color: #fff; }
+.p-ord.sel .num { background: #6d3fd6; color: #fff; border: 0; }
+.p-ord .txt { flex: 1; min-width: 0; }

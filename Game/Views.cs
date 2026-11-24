@@ -18,18 +18,25 @@ public static class Views
         int[]? distribution = null;
         int answeredCount = 0, correctCount = 0;
         double avgMs = 0;
+        object? estimate = null;
+        var solved = reveal || g.Phase is Phase.Scoreboard;
         if (q != null)
         {
             var answers = g.Players.Values.Select(p => p.Answers.GetValueOrDefault(idx)).Where(a => a != null).ToList();
             answeredCount = answers.Count;
-            if (reveal || g.Phase is Phase.Scoreboard)
+            if (solved)
             {
-                distribution = new int[q.Options.Count];
-                foreach (var a in answers) foreach (var c in a!.Choices) distribution[c]++;
+                if (q.IsChoice)
+                {
+                    distribution = new int[q.Options.Count];
+                    foreach (var a in answers) foreach (var c in a!.Choices) distribution[c]++;
+                }
+                if (q.IsEstimate) estimate = EstimateStats(g, q, idx);
                 correctCount = answers.Count(a => a!.Correct);
                 avgMs = answers.Count > 0 ? answers.Average(a => a!.ElapsedMs) : 0;
             }
         }
+        var next = g.Questions.Skip(idx + 1).Select((x, i) => (x, i: idx + 1 + i)).FirstOrDefault(t => !g.Skipped.Contains(t.i)).x;
 
         return new
         {
@@ -46,15 +53,27 @@ public static class Views
             question = q == null ? null : new
             {
                 text = q.Text,
+                kind = q.Kind,
                 timeLimit = q.TimeLimitSeconds,
                 multi = q.Multi,
-                correctCount = q.Options.Count(o => o.Correct),
+                correctCount = q.IsChoice ? q.Options.Count(o => o.Correct) : 0,
                 points = q.PointsMultiplier,
-                options = q.Options.Select(o => new { text = o.Text, correct = reveal || g.Phase is Phase.Scoreboard ? o.Correct : (bool?)null })
+                unit = q.Unit,
+                options = q.Displayed.Select(o => new { text = o.Text, correct = solved && q.IsChoice ? o.Correct : (bool?)null }),
+                correctOrder = solved && q.IsOrder ? q.CorrectSequence : null,
+                correctValue = solved && q.IsEstimate ? q.CorrectValue : null,
+                tolerance = q.IsEstimate ? q.Tolerance : 0,
+                explanation = solved ? q.Explanation : "",
+                // nur für die Fernbedienung (die Leinwand zeigt sie nicht)
+                notes = q.Notes,
             },
+            next = next == null ? null : new { text = next.Text, kind = next.Kind },
+            theme = g.Theme,
+            skipped = g.Skipped.Count,
             answeredCount,
             connectedCount = g.Players.Values.Count(p => p.Connected),
             distribution,
+            estimate,
             correctCount,
             avgMs = Math.Round(avgMs),
             players = g.Ranked.Select(p => new
@@ -144,22 +163,51 @@ public static class Views
         };
     }
 
-    static object FinalStats(Game g) => new
+    /// <summary>Schätzfrage: Kennwerte der Schätzungen und die drei nächsten Schätzungen</summary>
+    static object EstimateStats(Game g, QuestionSnap q, int idx)
+    {
+        var est = g.Players.Values.Select(p => (p, a: p.Answers.GetValueOrDefault(idx))).Where(x => x.a?.Number != null)
+            .Select(x => (x.p, v: x.a!.Number!.Value)).ToList();
+        var v = est.Select(x => x.v).Order().ToArray();
+        var c = q.CorrectValue ?? 0;
+        return new
+        {
+            n = v.Length,
+            mean = v.Length > 0 ? v.Average() : (double?)null,
+            median = v.Length == 0 ? (double?)null : v.Length % 2 == 1 ? v[v.Length / 2] : (v[v.Length / 2 - 1] + v[v.Length / 2]) / 2,
+            min = v.Length > 0 ? v[0] : (double?)null,
+            max = v.Length > 0 ? v[^1] : (double?)null,
+            within = est.Count(x => q.Hits(x.v)),
+            values = v,
+            closest = est.Where(x => !x.p.Anonymous).OrderBy(x => Math.Abs(x.v - c)).Take(3).Select(x => new { nick = x.p.Nickname, value = x.v }),
+        };
+    }
+
+    /// <summary>Auswertung je Frage (Leinwand-Statistik und gespeicherte Auswertung einer Runde)</summary>
+    public static object FinalStats(Game g) => new
     {
         questions = g.Questions.Select((q, i) =>
         {
             var answers = g.Players.Values.Select(p => p.Answers.GetValueOrDefault(i)).Where(a => a != null).ToList();
-            var dist = new int[q.Options.Count];
-            foreach (var a in answers) foreach (var c in a!.Choices) dist[c]++;
+            var dist = new int[q.IsChoice ? q.Options.Count : 0];
+            if (q.IsChoice) foreach (var a in answers) foreach (var c in a!.Choices) dist[c]++;
+            var nums = answers.Where(a => a!.Number != null).Select(a => a!.Number!.Value).Order().ToArray();
             return new
             {
                 text = q.Text,
+                kind = q.Kind,
+                // Reihenfolge: Elemente in der richtigen Reihenfolge
                 options = q.Options.Select(o => new { text = o.Text, correct = o.Correct }),
                 distribution = dist,
                 answered = answers.Count,
                 correct = answers.Count(a => a!.Correct),
-                players = g.Players.Count,
+                players = g.Players.Count(p => !p.Value.Anonymous),
                 avgMs = answers.Count > 0 ? Math.Round(answers.Average(a => a!.ElapsedMs)) : 0,
+                skipped = g.Skipped.Contains(i),
+                correctValue = q.CorrectValue,
+                tolerance = q.Tolerance,
+                unit = q.Unit,
+                median = nums.Length == 0 ? (double?)null : nums.Length % 2 == 1 ? nums[nums.Length / 2] : (nums[nums.Length / 2 - 1] + nums[nums.Length / 2]) / 2,
             };
         }),
     };
@@ -188,15 +236,22 @@ public static class Views
             question = q == null ? null : new
             {
                 text = q.Text,
+                kind = q.Kind,
                 multi = q.Multi,
                 timeLimit = q.TimeLimitSeconds,
+                unit = q.Unit,
                 optionCount = q.Options.Count,
-                options = q.Options.Select(o => o.Text),
-                correct = ShowSolution(g) ? q.Options.Select((o, i) => (o, i)).Where(x => x.o.Correct).Select(x => x.i) : null,
+                options = q.Displayed.Select(o => o.Text),
+                correct = ShowSolution(g) && q.IsChoice ? q.Options.Select((o, i) => (o, i)).Where(x => x.o.Correct).Select(x => x.i) : null,
+                correctOrder = ShowSolution(g) && q.IsOrder ? q.CorrectSequence : null,
+                correctValue = ShowSolution(g) && q.IsEstimate ? q.CorrectValue : null,
+                tolerance = q.IsEstimate ? q.Tolerance : 0,
+                explanation = ShowSolution(g) ? q.Explanation : "",
             },
             answer = a == null ? null : new
             {
                 choices = a.Choices,
+                number = a.Number,
                 correct = g.Phase is Phase.Reveal or Phase.Scoreboard ? a.Correct : (bool?)null,
                 points = g.Phase is Phase.Reveal or Phase.Scoreboard ? a.Points : 0,
             },

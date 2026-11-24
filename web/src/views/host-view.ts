@@ -4,7 +4,7 @@ import { customElement, property, state } from "lit/decorators.js";
 import { keyed } from "lit/directives/keyed.js";
 import { unsafeHTML } from "lit/directives/unsafe-html.js";
 import type { HubConnection } from "@microsoft/signalr";
-import { LETTERS, LightElement, Timers, connectHub, countUp, fmtInt, fmtSecs, optionLabel, shape } from "../core/util.ts";
+import { LETTERS, LightElement, Timers, connectHub, countUp, fmtInt, fmtNum, fmtSecs, optionLabel, shape } from "../core/util.ts";
 import { figureImg } from "../three/portrait.ts";
 import { confetti } from "../core/confetti.ts";
 import { sound, type Track } from "../audio/engine.ts";
@@ -88,6 +88,15 @@ export class HostView extends LightElement {
 		if (!this.pin || !this.hostKey) { this.error = "Kein Spiel angegeben."; return; }
 		const c = this.conn = connectHub();
 		c.on("state", (s: HostState) => void this.onState(s));
+		// Befehle von der Fernbedienung, die nur die Leinwand ausführen kann (Ton, Sieger-Song)
+		c.on("command", (cmd: string) => {
+			switch (cmd) {
+				case "song-end": if (this.s?.phase === "podium") this.endSong(); break;
+				case "song-intro": if (this.s?.phase === "podium" && this.song !== "done") this.fadeAfterIntro(); break;
+				case "mute": sound.setMuted(true); this.muted = true; break;
+				case "unmute": sound.setMuted(false); this.muted = false; break;
+			}
+		});
 		c.onreconnected(() => c.invoke("HostConnect", this.pin, this.hostKey));
 		c.start().then(() => c.invoke("HostConnect", this.pin, this.hostKey)).catch(e => { this.error = "Verbindung fehlgeschlagen: " + (e as Error).message; });
 	}
@@ -98,6 +107,10 @@ export class HostView extends LightElement {
 		return this.conn ? this.conn.invoke<T>(method, this.pin, this.hostKey, ...args) : Promise.resolve(undefined as T);
 	}
 	private next = () => void this.call("HostNext");
+	private skip = () => {
+		const ph = this.s?.phase;
+		if (confirm(ph === "scoreboard" ? "Die nächste Frage überspringen?" : "Diese Frage überspringen? Bereits abgegebene Antworten verfallen.")) void this.call("HostSkip");
+	};
 	private finish = () => { if (confirm("Quiz jetzt beenden und zur Siegerehrung springen?")) void this.call("HostFinish"); };
 	/** Raum schließen und zurück zur Übersicht (Handys sehen „Runde beendet“) */
 	private close = async () => {
@@ -156,9 +169,15 @@ export class HostView extends LightElement {
 	}
 
 	// ------------------------------------------------------------ Zustand
+	private themeApplied = false;
 	private async onState(s: HostState) {
 		const prev = this.s;
 		this.s = s;
+		// 3D-Welt aus dem Quiz (einmalig beim ersten Zustand; danach kann sie auf der Leinwand gewechselt werden)
+		if (!this.themeApplied && !this.preview) {
+			this.themeApplied = true;
+			if (s.theme && THEMES.some(t => t.id === s.theme) && this.stage?.theme.id !== s.theme) void this.changeTheme(s.theme as ThemeId);
+		}
 		this.stage?.setPlayers(s.players.filter(p => !p.anon).map(p => ({ id: p.id, nick: p.nick, avatar: p.avatar, answered: p.answered, connected: p.connected, lastCorrect: p.lastCorrect })));
 
 		const key = s.phase + ":" + s.version;
@@ -352,6 +371,7 @@ export class HostView extends LightElement {
 					<select aria-label="3D-Welt" @change=${(e: Event) => this.changeTheme((e.target as HTMLSelectElement).value as ThemeId)}>
 						${THEMES.map(t => html`<option value=${t.id} ?selected=${t.id === this.stage!.theme.id}>${t.label}</option>`)}
 					</select></label>` : nothing}
+				${!this.preview && s ? html`<button class="icon-btn" title="Fernbedienung fürs Handy" aria-label="Fernbedienung" @click=${() => { this.remoteQr = !this.remoteQr; }}>📱</button>` : nothing}
 				<button class="icon-btn" title="Ton an/aus (M)" aria-label="Ton an/aus" @click=${() => this.toggleMute()}>${this.muted ? "🔇" : "🔊"}</button>
 				<button class="icon-btn" title="Vollbild (F)" aria-label="Vollbild" @click=${() => this.toggleFull()}>⛶</button>
 			</header>
@@ -363,7 +383,21 @@ export class HostView extends LightElement {
 			${this.preview ? this.previewBar() : nothing}
 			${this.composer ? html`<direct-composer .error=${this.composerError}
 				@direct-submit=${(e: CustomEvent<DirectSpec>) => this.submitDirect(e.detail)} @direct-cancel=${() => { this.composer = false; }}></direct-composer>` : nothing}
+			${this.remoteQr && s ? this.remoteOverlay(s) : nothing}
 			${this.unlocked || this.error ? nothing : html`<div class="unlock"><button class="btn primary big" @click=${() => this.unlock()}>▶ Leinwand starten</button></div>`}`;
+	}
+
+	@state() private remoteQr = false;
+	/** QR-Code zur Fernbedienung – ohne Schlüssel: Steuern geht nur nach Anmeldung als Besitzer·in */
+	private remoteOverlay(s: HostState) {
+		const url = s.joinUrl.replace(/#\/.*$/, `#/remote/${s.pin}`);
+		return html`<div class="remote-overlay" @click=${() => { this.remoteQr = false; }}>
+			<div class="glass panel" @click=${(e: Event) => e.stopPropagation()}>
+				<h2>📱 Fernbedienung</h2>
+				<img src="api/qr?data=${encodeURIComponent(url)}" alt="QR-Code zur Fernbedienung">
+				<p>Mit dem eigenen Handy scannen und mit dem Podium-Konto anmelden.</p>
+				<button class="btn" @click=${() => { this.remoteQr = false; }}>Schließen</button>
+			</div></div>`;
 	}
 
 	private previewBar() {
@@ -379,6 +413,7 @@ export class HostView extends LightElement {
 		const end = s.hasQuiz ? html`<button class="btn ghost" @click=${this.finish}>Beenden</button>` : nothing;
 		const dq = html`<button class="btn ghost" title="Direktfrage (D)" @click=${() => this.openComposer()}>⚡ Direktfrage</button>`;
 		const close = html`<button class="btn ghost" title="Raum schließen und zur Übersicht" @click=${this.close}>✕ Runde beenden</button>`;
+		const skip = html`<button class="btn ghost" title="Diese Frage auslassen (zählt nicht)" @click=${this.skip}>⏭ Frage überspringen</button>`;
 		switch (s.phase) {
 			case "lobby": return s.hasQuiz
 				? html`${close}${dq}<button class="btn primary big" data-main ?disabled=${s.players.length === 0} @click=${this.next}>Los geht's ▶</button>`
@@ -390,10 +425,11 @@ export class HostView extends LightElement {
 						<button class="btn primary" data-main @click=${this.directClose}>Abstimmung schließen ⏹</button>`
 					: html`${s.hasQuiz ? nothing : close}${dq}<button class="btn primary" data-main @click=${this.directEnd}>Zurück ▶</button>`;
 			}
-			case "intro": return html`${end}<button class="btn" data-main @click=${this.next}>Überspringen ⏭</button>`;
-			case "answering": return html`${end}<button class="btn" data-main @click=${this.next}>Zeit beenden ⏹</button>`;
+			case "intro": return html`${end}${skip}<button class="btn" data-main @click=${this.next}>Antwortzeit starten ⏩</button>`;
+			case "answering": return html`${end}${skip}<button class="btn" data-main @click=${this.next}>Zeit beenden ⏹</button>`;
 			case "reveal": return html`${end}${dq}<button class="btn primary" data-main @click=${this.next}>${s.isLast ? "Zur Siegerehrung 🏆" : "Zwischenstand ▶"}</button>`;
-			case "scoreboard": return html`${end}${dq}<button class="btn primary" data-main @click=${this.next}>Nächste Frage ▶</button>`;
+			case "scoreboard": return html`${end}${dq}${s.next ? html`<button class="btn ghost" title="Die nächste Frage auslassen" @click=${this.skip}>⏭ Nächste überspringen</button>` : nothing}
+				<button class="btn primary" data-main @click=${this.next}>Nächste Frage ▶</button>`;
 			case "podium": {
 				const sg = this.song;
 				const songBtns = sg === "wait" || sg === "play" || sg === "intro" ? html`
@@ -449,6 +485,8 @@ export class HostView extends LightElement {
 			<div class="card question-card">${md(q.text)}</div>
 			<div class="meta">
 				<span class="pill">⏱ ${q.timeLimit} Sekunden</span>
+				${q.kind === "estimate" ? html`<span class="pill">🔢 Schätzfrage${q.unit ? ` (in ${q.unit})` : ""}</span>` : nothing}
+				${q.kind === "order" ? html`<span class="pill">↕ In die richtige Reihenfolge bringen</span>` : nothing}
 				${q.multi ? html`<span class="pill">☑ Mehrere Antworten richtig</span>` : nothing}
 				${q.points === 2 ? html`<span class="pill">✦ Doppelte Punkte</span>` : q.points === 0 ? html`<span class="pill">Ohne Punkte</span>` : nothing}
 			</div>
@@ -475,17 +513,55 @@ export class HostView extends LightElement {
 					<circle class="bar" id="tBar" cx="60" cy="60" r=${R} fill="none" stroke-width="10" stroke-dasharray=${C} stroke-dashoffset="0"/></svg>
 					<div class="num" id="tNum"></div>
 				</div>
-				<div class="side-info">${q.multi ? html`<span class="pill">☑ ${q.correctCount} Antworten richtig</span>` : html`<span class="pill">Eine Antwort richtig</span>`}</div>
+				<div class="side-info">${q.kind === "estimate" ? html`<span class="pill">🔢 Schätzt auf dem Handy${q.unit ? ` (in ${q.unit})` : ""}</span>`
+					: q.kind === "order" ? html`<span class="pill">↕ Reihenfolge auf dem Handy antippen</span>`
+					: q.multi ? html`<span class="pill">☑ ${q.correctCount} Antworten richtig</span>` : html`<span class="pill">Eine Antwort richtig</span>`}</div>
 			</div>
-			${this.tiles(q)}
+			${q.kind === "estimate" ? nothing : this.tiles(q)}
 		</section>`;
 	}
 
+	private explanation(q: HostQuestion) {
+		return q.explanation ? html`<div class="card explain">💡 ${md(q.explanation)}</div>` : nothing;
+	}
+	private statRow(s: HostState, pct: number) {
+		return html`<div class="stat-row">
+			<span class="pill">✓ ${s.correctCount} von ${s.answeredCount} richtig (${pct} %)</span>
+			${s.answeredCount < s.players.length ? html`<span class="pill">✋ ${s.answeredCount} von ${s.players.length} haben geantwortet</span>` : nothing}
+			<span class="pill">⏱ Ø ${fmtSecs(s.avgMs)} s</span>
+		</div>`;
+	}
+
 	private reveal(s: HostState, q: HostQuestion) {
+		const pct = s.answeredCount ? Math.round(100 * s.correctCount / s.answeredCount) : 0;
+		if (q.kind === "estimate") {
+			const e = s.estimate, u = q.unit ?? "";
+			return html`<section class="screen enter reveal">
+				<div class="card question-card">${md(q.text)}</div>
+				<div class="estimate-result glass">
+					<div class="big-value"><small>Richtig</small>${fmtNum(q.correctValue, u)}${q.tolerance ? html`<small>± ${fmtNum(q.tolerance)} zählt</small>` : nothing}</div>
+					${e && e.n ? html`<div class="est-stats">
+						<span class="pill">Median ${fmtNum(e.median, u)}</span><span class="pill">Ø ${fmtNum(e.mean == null ? null : Math.round(e.mean * 100) / 100, u)}</span>
+						<span class="pill">Spanne ${fmtNum(e.min)} – ${fmtNum(e.max, u)}</span></div>
+					${e.closest.length ? html`<div class="closest">${e.closest.map((c, i) => html`<span class="pill">${["🥇", "🥈", "🥉"][i]} ${c.nick}: ${fmtNum(c.value, u)}</span>`)}</div>` : nothing}`
+					: html`<div class="pill">Keine Schätzungen</div>`}
+				</div>
+				${this.statRow(s, pct)}
+				${this.explanation(q)}
+			</section>`;
+		}
+		if (q.kind === "order") {
+			const seq = q.correctOrder ?? [];
+			return html`<section class="screen enter reveal">
+				<div class="card question-card">${md(q.text)}</div>
+				<ol class="order-result glass">${seq.map((p, i) => html`<li style="animation-delay:${i * 180}ms"><b>${i + 1}.</b><div class="txt">${md(q.options[p]?.text ?? "")}</div></li>`)}</ol>
+				${this.statRow(s, pct)}
+				${this.explanation(q)}
+			</section>`;
+		}
 		const dist = s.distribution ?? [];
 		const max = Math.max(1, ...dist);
-		const pct = s.answeredCount ? Math.round(100 * s.correctCount / s.answeredCount) : 0;
-		return html`<section class="screen enter reveal">
+		return html`<section class="screen enter reveal ${q.explanation ? "has-explain" : ""}">
 			<div class="card question-card">${md(q.text)}</div>
 			<div class="chart">${q.options.map((o, i) => html`
 				<div class="col ${o.correct ? "right" : "wrong"}" aria-label="${optionLabel(i)}: ${dist[i]} Stimmen${o.correct ? ", richtig" : ""}">
@@ -493,11 +569,8 @@ export class HostView extends LightElement {
 					<div class="bar c${i}" data-h=${(dist[i] / max) * 100}></div>
 					<div class="lbl c${i}">${shape(i)}</div>
 				</div>`)}</div>
-			<div class="stat-row">
-				<span class="pill">✓ ${s.correctCount} von ${s.answeredCount} richtig (${pct} %)</span>
-				${s.answeredCount < s.players.length ? html`<span class="pill">✋ ${s.answeredCount} von ${s.players.length} haben geantwortet</span>` : nothing}
-				<span class="pill">⏱ Ø ${fmtSecs(s.avgMs)} s</span>
-			</div>
+			${this.statRow(s, pct)}
+			${this.explanation(q)}
 			${this.tiles(q, true)}
 		</section>`;
 	}
@@ -552,14 +625,17 @@ export class HostView extends LightElement {
 				<div class="glass panel">
 					<h2>Fragen im Überblick</h2>
 					<div class="q-stats">${st.questions.map((q, i) => {
+						if (q.skipped) return html`<div class="q-stat skipped"><div class="qt">${i + 1}. ${mdPlain(q.text)}</div><div class="info"><span>übersprungen</span></div></div>`;
 						const pct = q.players ? Math.round(100 * q.correct / q.players) : 0;
 						const max = Math.max(1, ...q.distribution);
 						return html`<div class="q-stat">
 							<div class="qt">${i + 1}. ${mdPlain(q.text)}</div>
 							<div class="meter"><i style="width:${pct}%"></i></div>
 							<div class="info"><span>${pct} % richtig (${q.correct}/${q.players})</span><span>Ø ${fmtSecs(q.avgMs)} s</span></div>
-							<div class="mini">${q.distribution.map((d, j) => html`<span class="c${j} ${q.options[j].correct ? "ok" : ""}" style="height:${(d / max) * 100}%"
-								title="${optionLabel(j)}: ${mdPlain(q.options[j].text)} – ${d}"></span>`)}</div>
+							${q.kind === "estimate" ? html`<div class="info"><span>richtig ${fmtNum(q.correctValue, q.unit)} · Median ${fmtNum(q.median, q.unit)}</span></div>`
+							: q.kind === "order" ? nothing
+							: html`<div class="mini">${q.distribution.map((d, j) => html`<span class="c${j} ${q.options[j].correct ? "ok" : ""}" style="height:${(d / max) * 100}%"
+								title="${optionLabel(j)}: ${mdPlain(q.options[j].text)} – ${d}"></span>`)}</div>`}
 						</div>`;
 					})}</div>
 				</div>

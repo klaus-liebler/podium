@@ -48,6 +48,15 @@ public static partial class MusicApi
         catch (JsonException) { return new(null, null, null, null); }
     }
 
+    /// <summary>Nur mitgelieferte Stücke und eigene Uploads des Kontos zulassen</summary>
+    static async Task<Selection> CleanSelection(AppDb db, int ownerId, Selection sel)
+    {
+        var mine = (await db.MusicUploads.Where(m => m.OwnerId == ownerId).Select(m => m.Id).ToListAsync()).Select(i => "u:" + i).ToHashSet();
+        List<string> Clean(List<string>? l) => (l ?? []).Where(r => r.StartsWith("b:") ? r.Length < 120 && !r.Contains('/') && !r.Contains('\\') : mine.Contains(r))
+            .Distinct().Take(40).ToList();
+        return new Selection(Clean(sel.Lobby), Clean(sel.Question), Clean(sel.Reveal), Clean(sel.Podium));
+    }
+
     static UploadDto Dto(MusicUpload u) => new(u.Id, u.Title, u.FileName, $"api/music/f/{u.StoredName}", u.Size, u.StartSec, u.IntroEndSec, u.CreatedUtc);
 
     /// <summary>Uploads + Auswahl eines Kontos (für Dozentenbereich und Leinwand)</summary>
@@ -65,7 +74,15 @@ public static partial class MusicApi
         {
             var g = games.Get(pin);
             if (g == null || !string.Equals(g.HostKey, key, StringComparison.Ordinal)) return Results.NotFound();
-            return g.OwnerId is int id ? Results.Ok(await Config(db, id)) : Results.Ok(new { uploads = Array.Empty<object>(), selection = new { } });
+            if (g.OwnerId is not int id) return Results.Ok(new { uploads = Array.Empty<object>(), selection = new { } });
+            var user = await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == id);
+            var uploads = await db.MusicUploads.AsNoTracking().Where(m => m.OwnerId == id).OrderBy(m => m.Title).ToListAsync();
+            // eigene Musik des Quiz ersetzt die Auswahl des Kontos je Abschnitt (leere Abschnitte: Auswahl des Kontos)
+            var acc = ReadSelection(user?.MusicJson);
+            var quiz = string.IsNullOrWhiteSpace(g.MusicJson) ? null : ReadSelection(g.MusicJson);
+            static List<string>? Pick(List<string>? q, List<string>? a) => q is { Count: > 0 } ? q : a;
+            var sel = quiz == null ? acc : new Selection(Pick(quiz.Lobby, acc.Lobby), Pick(quiz.Question, acc.Question), Pick(quiz.Reveal, acc.Reveal), Pick(quiz.Podium, acc.Podium));
+            return Results.Ok(new { uploads = uploads.Select(Dto), selection = sel });
         });
 
         // Audiodateien: nicht aufzählbarer Zufallsname, Range-Anfragen (Spulen) werden unterstützt
@@ -85,14 +102,31 @@ public static partial class MusicApi
         my.MapPut("/selection", async (Selection sel, AppDb db, ClaimsPrincipal u) =>
         {
             var id = u.UserId();
-            var mine = (await db.MusicUploads.Where(m => m.OwnerId == id).Select(m => m.Id).ToListAsync()).Select(i => "u:" + i).ToHashSet();
-            List<string> Clean(List<string>? l) => (l ?? []).Where(r => r.StartsWith("b:") ? r.Length < 120 && !r.Contains('/') && !r.Contains('\\') : mine.Contains(r))
-                .Distinct().Take(40).ToList();
-            var clean = new Selection(Clean(sel.Lobby), Clean(sel.Question), Clean(sel.Reveal), Clean(sel.Podium));
+            var clean = await CleanSelection(db, id, sel);
             var user = await db.Users.FirstAsync(x => x.Id == id);
             user.MusicJson = JsonSerializer.Serialize(clean, Json);
             await db.SaveChangesAsync();
             return Results.Ok(clean);
+        });
+
+        // Eigene Musik je Quiz: selection = null bedeutet „Auswahl des Kontos“
+        my.MapGet("/quiz/{qid:int}", async (int qid, AppDb db, ClaimsPrincipal u) =>
+        {
+            var id = u.UserId();
+            var q = await db.Quizzes.AsNoTracking().Where(x => x.Id == qid && x.OwnerId == id).Select(x => new { x.Title, x.MusicJson }).FirstOrDefaultAsync();
+            if (q == null) return Results.NotFound();
+            return Results.Ok(new { q.Title, selection = string.IsNullOrWhiteSpace(q.MusicJson) ? null : ReadSelection(q.MusicJson) });
+        });
+        my.MapPut("/quiz/{qid:int}", async (int qid, Selection? sel, AppDb db, ClaimsPrincipal u) =>
+        {
+            var id = u.UserId();
+            var q = await db.Quizzes.FirstOrDefaultAsync(x => x.Id == qid && x.OwnerId == id);
+            if (q == null) return Results.NotFound();
+            var clean = sel == null ? null : await CleanSelection(db, id, sel);
+            q.MusicJson = clean == null || new[] { clean.Lobby, clean.Question, clean.Reveal, clean.Podium }.All(l => l is not { Count: > 0 })
+                ? "" : JsonSerializer.Serialize(clean, Json);
+            await db.SaveChangesAsync();
+            return Results.Ok(new { selection = q.MusicJson == "" ? null : clean });
         });
 
         my.MapPost("/uploads", async (IFormFileCollection files, AppDb db, ClaimsPrincipal u) =>

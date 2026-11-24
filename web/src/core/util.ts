@@ -62,6 +62,28 @@ export class Timers {
 	clear() { this.ids.forEach(clearTimeout); this.rafs.forEach(cancelAnimationFrame); this.ids = []; this.rafs = []; }
 }
 
+/**
+ * Schutz vor dem Verlassen mit ungespeicherten Änderungen: Eine Ansicht setzt `nav.guard`; der Router (main.ts) fragt
+ * vor jedem Routenwechsel nach und springt bei „nein“ zurück. Beim Schließen des Tabs greift zusätzlich beforeunload.
+ */
+export const nav: { guard: (() => boolean) | null } = { guard: null };
+
+/** Termin-/Datumsanzeige im Dozentenbereich */
+export const fmtDate = (d: string) => new Date(d).toLocaleString("de-DE", { dateStyle: "medium", timeStyle: "short" });
+
+/** Datei aus dem Browser speichern */
+export function download(name: string, data: BlobPart, type: string) {
+	const a = document.createElement("a");
+	a.href = URL.createObjectURL(new Blob([data], { type }));
+	a.download = name;
+	a.click();
+	setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+
+/** Zahl deutsch formatiert (ohne unnötige Nachkommastellen) */
+export const fmtNum = (n: number | null | undefined, unit = "") =>
+	n == null ? "–" : n.toLocaleString("de-DE", { maximumFractionDigits: 3 }) + (unit ? " " + unit : "");
+
 /** Kurze Meldung unten am Bildschirmrand, verschwindet nach `ms` von selbst. */
 export function toast(text: string, ms = 3000, kind: "ok" | "err" = "ok") {
 	document.querySelector(".toast")?.remove();

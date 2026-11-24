@@ -20,6 +20,8 @@ public class User
     public string? SsoId { get; set; }
     /// <summary>Hochschul-Login: E-Mail-Adresse laut IdP (bei jeder Anmeldung aktualisiert)</summary>
     public string? Email { get; set; }
+    /// <summary>Eigener Claude-API-Schlüssel für KI-Vorschläge – verschlüsselt (Data Protection), nie im Klartext ausgeliefert</summary>
+    public string? AiKeyProtected { get; set; }
 }
 
 /// <summary>Eigenes, hochgeladenes Musikstück eines Kontos. Datei liegt unter StoredName im Musikordner.</summary>
@@ -67,6 +69,14 @@ public class Quiz
     public int? FolderId { get; set; }
     public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedUtc { get; set; } = DateTime.UtcNow;
+    /// <summary>Papierkorb: gesetzt = gelöscht (nach 30 Tagen endgültig entfernt)</summary>
+    public DateTime? DeletedUtc { get; set; }
+    /// <summary>optional: 3D-Welt für dieses Quiz ("" = wie zuletzt auf der Leinwand gewählt)</summary>
+    public string Theme { get; set; } = "";
+    /// <summary>optional: eigene Musikauswahl für dieses Quiz (JSON wie User.MusicJson, "" = Auswahl des Kontos)</summary>
+    public string MusicJson { get; set; } = "";
+    /// <summary>Teilen per Link: zufälliges Token (null = nicht geteilt)</summary>
+    public string? ShareToken { get; set; }
     public List<Question> Questions { get; set; } = new();
 }
 
@@ -77,6 +87,15 @@ public class QuizFolder
     public int OwnerId { get; set; }
     public string Name { get; set; } = "";
     public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
+    /// <summary>optional: feste Kurs-PIN – Runden mit Quizzen aus diesem Ordner bekommen immer diese PIN</summary>
+    public string? Pin { get; set; }
+}
+
+/// <summary>Fragetypen: Auswahl (1..n richtig), Schätzfrage (Zahl mit Toleranz), Reihenfolge (Antworten richtig anordnen)</summary>
+public static class QuestionKinds
+{
+    public const string Choice = "choice", Estimate = "estimate", Order = "order";
+    public static string Norm(string? k) => k is Estimate or Order ? k : Choice;
 }
 
 public class Question
@@ -89,6 +108,16 @@ public class Question
     public int TimeLimitSeconds { get; set; } = 20;
     /// <summary>Punkte-Multiplikator: 0 = ohne Punkte, 1 = Standard, 2 = doppelt.</summary>
     public int PointsMultiplier { get; set; } = 1;
+    /// <summary>Fragetyp (QuestionKinds); bei "order" ist die gespeicherte Reihenfolge der Antworten die richtige</summary>
+    public string Kind { get; set; } = QuestionKinds.Choice;
+    /// <summary>optional: Erklärung, die mit der Lösung erscheint (Markdown)</summary>
+    public string Explanation { get; set; } = "";
+    /// <summary>optional: Notizen für die Lehrperson – nur auf der Fernbedienung sichtbar</summary>
+    public string Notes { get; set; } = "";
+    /// <summary>Schätzfrage: richtiger Wert, Toleranz (± absolut, 0 = exakt) und Einheit</summary>
+    public double? CorrectValue { get; set; }
+    public double? Tolerance { get; set; }
+    public string Unit { get; set; } = "";
     public List<AnswerOption> Options { get; set; } = new();
 }
 
@@ -111,6 +140,8 @@ public class GameSession
     public string Pin { get; set; } = "";
     public DateTime StartedUtc { get; set; }
     public DateTime? FinishedUtc { get; set; }
+    /// <summary>Auswertung je Frage (JSON, siehe Views.FinalStats) – für die Auswertung nach der Vorlesung</summary>
+    public string StatsJson { get; set; } = "";
     public List<GameSessionPlayer> Players { get; set; } = new();
 }
 
@@ -139,6 +170,27 @@ public class DirectPoll
     public DateTime CreatedUtc { get; set; }
 }
 
+/// <summary>Gespeicherte Direktfrage als Vorlage (z. B. „Wie war das Tempo heute?“)</summary>
+public class DirectTemplate
+{
+    public int Id { get; set; }
+    public int OwnerId { get; set; }
+    /// <summary>DirectSpec als JSON</summary>
+    public string SpecJson { get; set; } = "";
+    public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>Bild in einer Frage/Antwort. Datei liegt unter StoredName im Bildordner; Abruf über api/media/{StoredName} (nicht aufzählbar).</summary>
+public class MediaFile
+{
+    public int Id { get; set; }
+    public int OwnerId { get; set; }
+    public string StoredName { get; set; } = "";
+    public string ContentType { get; set; } = "";
+    public long Size { get; set; }
+    public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
+}
+
 public class AppDb(DbContextOptions<AppDb> options) : DbContext(options)
 {
     public DbSet<User> Users => Set<User>();
@@ -151,6 +203,8 @@ public class AppDb(DbContextOptions<AppDb> options) : DbContext(options)
     public DbSet<GameSessionPlayer> GameSessionPlayers => Set<GameSessionPlayer>();
     public DbSet<DirectPoll> DirectPolls => Set<DirectPoll>();
     public DbSet<MusicUpload> MusicUploads => Set<MusicUpload>();
+    public DbSet<DirectTemplate> DirectTemplates => Set<DirectTemplate>();
+    public DbSet<MediaFile> MediaFiles => Set<MediaFile>();
 
     /// <summary>
     /// Alle Zeitpunkte sind UTC. SQLite speichert sie als Text ohne Zeitzone, EF liest sie als DateTimeKind.Unspecified –
@@ -203,6 +257,26 @@ public class AppDb(DbContextOptions<AppDb> options) : DbContext(options)
         if (!HasColumn("Users", "Email")) Database.ExecuteSqlRaw(@"ALTER TABLE ""Users"" ADD COLUMN ""Email"" TEXT NULL");
         Database.ExecuteSqlRaw(@"CREATE UNIQUE INDEX IF NOT EXISTS ""IX_Users_SsoId"" ON ""Users"" (""SsoId"")");
         if (!HasColumn("Quizzes", "FolderId")) Database.ExecuteSqlRaw(@"ALTER TABLE ""Quizzes"" ADD COLUMN ""FolderId"" INTEGER NULL");
+        foreach (var (table, col, type) in new[] {
+            ("Quizzes", "DeletedUtc", "TEXT NULL"), ("Quizzes", "Theme", "TEXT NOT NULL DEFAULT ''"), ("Quizzes", "MusicJson", "TEXT NOT NULL DEFAULT ''"),
+            ("Quizzes", "ShareToken", "TEXT NULL"), ("QuizFolders", "Pin", "TEXT NULL"),
+            ("Questions", "Kind", "TEXT NOT NULL DEFAULT 'choice'"), ("Questions", "Explanation", "TEXT NOT NULL DEFAULT ''"),
+            ("Questions", "Notes", "TEXT NOT NULL DEFAULT ''"), ("Questions", "CorrectValue", "REAL NULL"), ("Questions", "Tolerance", "REAL NULL"),
+            ("Questions", "Unit", "TEXT NOT NULL DEFAULT ''"), ("GameSessions", "StatsJson", "TEXT NOT NULL DEFAULT ''"),
+            ("Users", "AiKeyProtected", "TEXT NULL") })
+            if (!HasColumn(table, col)) Database.ExecuteSqlRaw($@"ALTER TABLE ""{table}"" ADD COLUMN ""{col}"" {type}");
+        Database.ExecuteSqlRaw(@"CREATE UNIQUE INDEX IF NOT EXISTS ""IX_Quizzes_ShareToken"" ON ""Quizzes"" (""ShareToken"")");
+        Database.ExecuteSqlRaw(@"CREATE UNIQUE INDEX IF NOT EXISTS ""IX_QuizFolders_Pin"" ON ""QuizFolders"" (""Pin"")");
+        Database.ExecuteSqlRaw(@"CREATE TABLE IF NOT EXISTS ""DirectTemplates"" (
+            ""Id"" INTEGER NOT NULL CONSTRAINT ""PK_DirectTemplates"" PRIMARY KEY AUTOINCREMENT,
+            ""OwnerId"" INTEGER NOT NULL, ""SpecJson"" TEXT NOT NULL, ""CreatedUtc"" TEXT NOT NULL)");
+        Database.ExecuteSqlRaw(@"CREATE INDEX IF NOT EXISTS ""IX_DirectTemplates_OwnerId"" ON ""DirectTemplates"" (""OwnerId"")");
+        Database.ExecuteSqlRaw(@"CREATE TABLE IF NOT EXISTS ""MediaFiles"" (
+            ""Id"" INTEGER NOT NULL CONSTRAINT ""PK_MediaFiles"" PRIMARY KEY AUTOINCREMENT,
+            ""OwnerId"" INTEGER NOT NULL, ""StoredName"" TEXT NOT NULL, ""ContentType"" TEXT NOT NULL, ""Size"" INTEGER NOT NULL, ""CreatedUtc"" TEXT NOT NULL)");
+        Database.ExecuteSqlRaw(@"CREATE UNIQUE INDEX IF NOT EXISTS ""IX_MediaFiles_StoredName"" ON ""MediaFiles"" (""StoredName"")");
+        // Papierkorb: nach 30 Tagen endgültig löschen (Fragen/Antworten per Fremdschlüssel-Kaskade)
+        Database.ExecuteSqlRaw(@"DELETE FROM ""Quizzes"" WHERE ""DeletedUtc"" IS NOT NULL AND ""DeletedUtc"" < @p0", DateTime.UtcNow.AddDays(-30));
         // Umbenanntes Stück: gespeicherte Musikauswahl ("b:<datei>") nachziehen
         Database.ExecuteSqlRaw(@"UPDATE ""Users"" SET ""MusicJson"" = REPLACE(""MusicJson"", '""b:podium_gehoert_euch.mp3""', '""b:podium_gehoert_euch_liebler.mp3""') WHERE ""MusicJson"" LIKE '%b:podium_gehoert_euch.mp3%'");
     }
@@ -222,6 +296,10 @@ public class AppDb(DbContextOptions<AppDb> options) : DbContext(options)
         b.Entity<Invite>().HasIndex(i => i.TokenHash).IsUnique();
         b.Entity<MusicUpload>().HasIndex(m => m.OwnerId);
         b.Entity<QuizFolder>().HasIndex(f => f.OwnerId);
+        b.Entity<QuizFolder>().HasIndex(f => f.Pin).IsUnique();
+        b.Entity<Quiz>().HasIndex(q => q.ShareToken).IsUnique();
+        b.Entity<DirectTemplate>().HasIndex(t => t.OwnerId);
+        b.Entity<MediaFile>().HasIndex(m => m.StoredName).IsUnique();
         b.Entity<Quiz>().HasMany(q => q.Questions).WithOne().HasForeignKey(q => q.QuizId).OnDelete(DeleteBehavior.Cascade);
         b.Entity<Question>().HasMany(q => q.Options).WithOne().HasForeignKey(o => o.QuestionId).OnDelete(DeleteBehavior.Cascade);
         b.Entity<GameSession>().HasMany(g => g.Players).WithOne().HasForeignKey(p => p.GameSessionId).OnDelete(DeleteBehavior.Cascade);

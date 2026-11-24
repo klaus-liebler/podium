@@ -13,6 +13,12 @@
 .dc-panel textarea { resize: vertical; }
 .dc-presets { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
 .dc-presets button { font-size: 13px; padding: 4px 10px; border-radius: 99px; background: #f4f5f7; }
+.dc-presets.mine { align-items: center; margin-top: -6px; }
+.dc-lbl { font-size: 13px; font-weight: 600; opacity: .75; }
+.dc-tpl { display: inline-flex; }
+.dc-tpl button:first-child { border-radius: 99px 0 0 99px; background: #ece9ff; }
+.dc-tpl button.x { border-radius: 0 99px 99px 0; padding: 4px 8px; background: #ece9ff; border-left: 0; }
+.dc-actions .dc-save { margin-right: auto; }
 .dc-field { display: block; margin-bottom: 12px; flex: 1; }
 .dc-field > span { display: block; font-size: 13px; color: #646b7d; font-weight: 600; margin-bottom: 3px; }
 .dc-seg { display: inline-flex; border: 1px solid #d8dbe3; border-radius: 8px; overflow: hidden; margin-bottom: 14px; }

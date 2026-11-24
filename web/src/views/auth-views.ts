@@ -144,12 +144,32 @@ export class AccountView extends LightElement {
 	@state() private me: Me | null = null;
 	@state() private msg: { text: string; ok: boolean } | null = null;
 	@state() private sso = false;
+	/** KI-Vorschläge: eigener Claude-API-Schlüssel (nur die letzten 4 Zeichen werden angezeigt) */
+	@state() private ai: { enabled: boolean; own: boolean; server: boolean; hint: string | null } | null = null;
+	@state() private aiMsg: { text: string; ok: boolean } | null = null;
 
 	override connectedCallback() {
 		super.connectedCallback();
 		document.body.className = "teacher"; document.title = "Podium – Mein Konto";
-		void getMe(true).then(m => { this.me = m; if (!m) location.hash = "#/login"; });
+		void getMe(true).then(m => { this.me = m; if (!m) location.hash = "#/login"; else void this.loadAi(); });
 		void ssoEnabled().then(e => { this.sso = e; });
+	}
+	private async loadAi() { this.ai = await api<NonNullable<AccountView["ai"]>>("ai").catch(() => null); }
+	private async saveAiKey(e: Event) {
+		e.preventDefault();
+		const input = this.querySelector<HTMLInputElement>("#aikey")!;
+		try {
+			await api("ai/key", { method: "PUT", json: { key: input.value } });
+			input.value = "";
+			this.aiMsg = { text: "Schlüssel gespeichert. KI-Vorschläge findest du im Quiz-Editor.", ok: true };
+			await this.loadAi();
+		} catch (err) { this.aiMsg = { text: (err as Error).message, ok: false }; }
+	}
+	private async delAiKey() {
+		if (!confirm("Claude-API-Schlüssel entfernen?")) return;
+		await api("ai/key", { method: "DELETE" });
+		this.aiMsg = { text: "Schlüssel entfernt.", ok: true };
+		await this.loadAi();
 	}
 
 	private async submit(e: Event) {
@@ -178,6 +198,19 @@ export class AccountView extends LightElement {
 					<label class="field"><span>Neues Passwort wiederholen</span><input type="password" id="pw2" autocomplete="new-password" minlength="10" required></label>
 					<button class="primary" type="submit">Passwort ändern</button>
 				</form>`}
+				${m && this.ai ? html`<h2>✨ KI-Vorschläge (Claude)</h2>
+				<form class="box" style="padding:16px;max-width:620px" @submit=${(e: Event) => this.saveAiKey(e)}>
+					<p style="margin-top:0">Im Quiz-Editor kann Claude aus einem Text oder PDF Fragen vorschlagen. Dafür brauchst du einen eigenen
+						API-Schlüssel von <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener noreferrer">console.anthropic.com</a>;
+						die Kosten laufen über dein Anthropic-Konto. Der Schlüssel wird verschlüsselt gespeichert und nie wieder angezeigt.</p>
+					${this.aiMsg ? html`<div class="msg ${this.aiMsg.ok ? "ok" : "err"}">${this.aiMsg.text}</div>` : nothing}
+					${this.ai.own ? html`<p>✓ Eigener Schlüssel hinterlegt (<code>${this.ai.hint}</code>)
+						<button type="button" class="danger" @click=${() => this.delAiKey()}>Entfernen</button></p>`
+					: this.ai.server ? html`<p class="muted">Zurzeit wird der Schlüssel des Servers verwendet. Mit einem eigenen Schlüssel laufen die Kosten über dein Konto.</p>` : nothing}
+					<label class="field"><span>${this.ai.own ? "Schlüssel ersetzen" : "Claude-API-Schlüssel"} (beginnt mit „sk-ant-“)</span>
+						<input type="password" id="aikey" autocomplete="off" spellcheck="false" placeholder="sk-ant-…" required></label>
+					<button class="primary" type="submit">Schlüssel speichern</button>
+				</form>` : nothing}
 			</main>`;
 	}
 }

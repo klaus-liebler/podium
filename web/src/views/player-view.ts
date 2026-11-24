@@ -4,7 +4,7 @@ import { html, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { keyed } from "lit/directives/keyed.js";
 import type { HubConnection } from "@microsoft/signalr";
-import { LETTERS, LightElement, SHAPE_NAMES, Timers, connectHub, fmtInt, isDarkText, shape, store, vibrate } from "../core/util.ts";
+import { LETTERS, LightElement, SHAPE_NAMES, Timers, connectHub, fmtInt, fmtNum, isDarkText, shape, store, vibrate } from "../core/util.ts";
 import { COLORS, FIGURE_PARTS, norm, randomAvatar } from "../core/avatar.ts";
 import { LivePreview, figureImg } from "../three/portrait.ts";
 import { confetti } from "../core/confetti.ts";
@@ -27,6 +27,9 @@ export class PlayerView extends LightElement {
 	@state() private error = "";
 	@state() private busy = false;
 	@state() private selection = new Set<number>();
+	/** Reihenfolge-Frage: angetippte Anzeigepositionen in Reihenfolge; Schätzfrage: Eingabe */
+	@state() private seq: number[] = [];
+	@state() private guess = "";
 	@state() private sending = false;
 	@state() private delayedReveal = false;
 	// DirectMode-Eingaben
@@ -107,7 +110,7 @@ export class PlayerView extends LightElement {
 		document.body.className = `player ph-${s.phase}${cls}`;
 
 		if (s.phase === "answering" && !s.answer) {
-			this.selection = new Set(); this.sending = false;
+			this.selection = new Set(); this.sending = false; this.seq = []; this.guess = "";
 			void this.updateComplete.then(() => {
 				const bar = this.querySelector<HTMLElement>("#ptimerBar"); if (!bar) return;
 				const total = s.question!.timeLimit * 1000;
@@ -145,6 +148,35 @@ export class PlayerView extends LightElement {
 		try { await this.conn!.invoke("PlayerAnswer", s.pin, s.questionIndex, [...this.selection]); vibrate([20, 40, 20]); }
 		catch { this.sending = false; }
 	}
+	private async sendOrder() {
+		const s = this.s; if (!s?.question || this.sending || this.seq.length !== s.question.optionCount) return;
+		this.sending = true;
+		try { if (!await this.conn!.invoke<boolean>("PlayerAnswer", s.pin, s.questionIndex, this.seq)) this.sending = false; else vibrate([20, 40, 20]); }
+		catch { this.sending = false; }
+	}
+	private async sendEstimate(e: Event) {
+		e.preventDefault();
+		const s = this.s, n = parseFloat(this.guess.replace(/\s/g, "").replace(",", "."));
+		if (!s || this.sending || !Number.isFinite(n)) return;
+		this.sending = true;
+		try { if (!await this.conn!.invoke<boolean>("PlayerEstimate", s.pin, s.questionIndex, n)) this.sending = false; else vibrate([20, 40, 20]); }
+		catch { this.sending = false; }
+	}
+	/** eigene Antwort als Text (Warten/Auflösung) */
+	private mine(s: PlayerState) {
+		const a = s.answer!, q = s.question;
+		if (q?.kind === "estimate") return html`<div class="pill" style="font-size:1.3rem">${fmtNum(a.number, q.unit ?? "")}</div>`;
+		if (q?.kind === "order") return html`<ol class="p-order small">${a.choices.map(p => html`<li>${mdPlain(q.options[p] ?? "")}</li>`)}</ol>`;
+		return this.chips(a.choices);
+	}
+	/** richtige Lösung je Fragetyp */
+	private solution(s: PlayerState) {
+		const q = s.question;
+		if (q?.kind === "estimate") return html`<div class="pill" style="font-size:1.3rem">${fmtNum(q.correctValue, q.unit ?? "")}${q.tolerance ? html` <small>(± ${fmtNum(q.tolerance)})</small>` : nothing}</div>`;
+		if (q?.kind === "order") return html`<ol class="p-order small">${(q.correctOrder ?? []).map(p => html`<li>${mdPlain(q.options[p] ?? "")}</li>`)}</ol>`;
+		return this.chips(q?.correct ?? []);
+	}
+	private explain(s: PlayerState) { return s.question?.explanation ? html`<div class="p-explain">💡 ${md(s.question.explanation)}</div>` : nothing; }
 
 	private async sendDirect(d: PlayerDirect, choices: number[] | null) {
 		this.dError = "";
@@ -313,12 +345,41 @@ export class PlayerView extends LightElement {
 				<div class="pill">Frage ${s.questionIndex + 1} von ${s.questionCount}</div>
 				<div class="p-q">${md(s.question!.text)}</div>
 				${s.question!.multi ? html`<div class="pill multi-hint">☑ Mehrere Antworten richtig</div>` : nothing}
+				${s.question!.kind === "estimate" ? html`<div class="pill multi-hint">🔢 Schätzfrage${s.question!.unit ? ` (in ${s.question!.unit})` : ""}</div>` : nothing}
+				${s.question!.kind === "order" ? html`<div class="pill multi-hint">↕ Reihenfolge</div>` : nothing}
 				${loader}<p class="muted">Mach dich bereit!</p>`;
 			case "answering": {
 				if (s.answer) return html`
 					<div class="big-av">${av(s.me.avatar)}</div><h2>Antwort ist raus!</h2>
-					<div aria-label="Deine Auswahl">${this.chips(s.answer.choices)}</div>${loader}<p class="muted">${this.waitingText}</p>`;
+					<div aria-label="Deine Antwort">${this.mine(s)}</div>${loader}<p class="muted">${this.waitingText}</p>`;
 				const q = s.question!;
+				if (q.kind === "estimate") return html`
+					<div class="p-q">${md(q.text)}</div>
+					<form class="join-card glass" @submit=${(e: Event) => this.sendEstimate(e)}>
+						<label for="guess">Deine Schätzung${q.unit ? ` (in ${q.unit})` : ""}</label>
+						<div class="num-row"><input id="guess" inputmode="decimal" autocomplete="off" .value=${this.guess} ?disabled=${this.sending}
+							@input=${(e: InputEvent) => { this.guess = (e.target as HTMLInputElement).value; }}>${q.unit ? html`<span class="unit">${q.unit}</span>` : nothing}</div>
+						<button class="btn primary big" type="submit" ?disabled=${this.sending || !Number.isFinite(parseFloat(this.guess.replace(",", ".")))}>Abschicken</button>
+					</form>`;
+				if (q.kind === "order") {
+					const done = this.seq.length === q.optionCount;
+					return html`
+					<div class="p-q">${md(q.text)}</div>
+					<div class="multi-hint">↕ Tippe die Elemente in der richtigen Reihenfolge an</div>
+					<div class="p-order-pick" role="group" aria-label="Elemente">
+						${q.options.map((o, p) => {
+							const pos = this.seq.indexOf(p);
+							return html`<button class="p-ord ${pos >= 0 ? "sel" : ""}" ?disabled=${this.sending}
+								aria-label="${mdPlain(o)}${pos >= 0 ? `, Platz ${pos + 1}` : ""}"
+								@click=${() => { vibrate(12); this.seq = pos >= 0 ? this.seq.slice(0, pos) : [...this.seq, p]; }}>
+								<span class="num">${pos >= 0 ? pos + 1 : ""}</span><div class="txt">${md(o)}</div></button>`;
+						})}
+					</div>
+					<div class="submit-row">
+						<button class="btn ghost" ?disabled=${!this.seq.length || this.sending} @click=${() => { this.seq = []; }}>Neu</button>
+						<button class="btn primary big" ?disabled=${!done || this.sending} @click=${() => this.sendOrder()}>${done ? "Abschicken" : `${this.seq.length} von ${q.optionCount}`}</button>
+					</div>`;
+				}
 				return html`
 					<div class="p-q">${md(q.text)}</div>
 					${q.multi ? html`<div class="multi-hint">☑ Wähle alle richtigen Antworten</div>` : nothing}
@@ -333,14 +394,17 @@ export class PlayerView extends LightElement {
 			}
 			case "reveal": {
 				const a = s.answer;
+				const est = s.question?.kind === "estimate";
 				if (!a) return html`<div class="result-icon bad" aria-hidden="true">⏰</div><h1>Zu spät!</h1>
-					<p>Richtig wäre gewesen:</p>${this.chips(s.question?.correct ?? [])}<p>${rankTxt}</p>`;
-				if (a.correct) return html`<div class="result-icon ok" aria-hidden="true">✓</div><h1>Richtig!</h1>
+					<p>Richtig wäre gewesen:</p>${this.solution(s)}${this.explain(s)}<p>${rankTxt}</p>`;
+				if (a.correct) return html`<div class="result-icon ok" aria-hidden="true">✓</div><h1>${est ? "Gut geschätzt!" : "Richtig!"}</h1>
 					<div class="points-chip">+${fmtInt(a.points)}</div>
+					${est ? html`<p>Richtig: ${this.solution(s)} Du: ${this.mine(s)}</p>` : nothing}
 					${s.me.streak >= 2 ? html`<div class="streak-chip">🔥 ${s.me.streak} richtige in Folge</div>` : nothing}
-					<p>${rankTxt}</p>`;
-				return html`<div class="result-icon bad" aria-hidden="true">✗</div><h1>Leider falsch</h1>
-					<p>Richtig wäre gewesen:</p>${this.chips(s.question?.correct ?? [])}
+					${this.explain(s)}<p>${rankTxt}</p>`;
+				return html`<div class="result-icon bad" aria-hidden="true">✗</div><h1>${est ? "Daneben" : "Leider falsch"}</h1>
+					<p>Richtig wäre gewesen:</p>${this.solution(s)}${est ? html`<p class="muted">Deine Schätzung:</p>${this.mine(s)}` : nothing}
+					${this.explain(s)}
 					<p>${rankTxt}</p><p class="muted">Kopf hoch – nächste Runde!</p>`;
 			}
 			case "scoreboard": return html`

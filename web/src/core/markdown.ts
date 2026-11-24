@@ -19,6 +19,9 @@ function inline(src: string): string {
 	s = s.replace(/(?<!\\)\$(?!\s)([^$\n]*?[^\s\\$]|[^\s$])\$(?!\d)/g, (_, m: string) => put(tex(m, false)));
 	s = s.replace(/\\([\\`*_{}[\]()#+\-.!|$~>])/g, (_, c: string) => put(esc(c)));
 	s = esc(s);
+	// Bilder nur vom eigenen Server (hochgeladen im Editor) – keine fremden Adressen (Tracking, gemischte Inhalte)
+	s = s.replace(/!\[([^\]\n]*)\]\((api\/media\/[a-f0-9]{32}\.(?:png|jpg|gif|webp))\)/g, (_, alt: string, u: string) =>
+		`<img class="md-img" src="${u}" alt="${alt}" loading="lazy">`);
 	s = s.replace(/\[([^\]\n]+)\]\(([^)\s]+)\)/g, (m, t: string, u: string) =>
 		/^(https?:\/\/|mailto:)/i.test(u) ? `<a href="${u}" target="_blank" rel="noopener noreferrer">${t}</a>` : m);
 	s = s.replace(/(?<![\w/"=])(https?:\/\/[^\s<]+[^\s<.,;:!?)])/g, (u, _x, off: number, all: string) =>
@@ -128,6 +131,7 @@ export function mdPlain(src: string): string {
 		.replace(/`([^`]+)`/g, (_, c: string) => put(c))
 		.replace(/(?<!\\)\$\$([\s\S]+?)\$\$/g, (_, m: string) => put(texPlain(m)))
 		.replace(/(?<!\\)\$(?!\s)([^$\n]*?[^\s\\$]|[^\s$])\$(?!\d)/g, (_, m: string) => put(texPlain(m)))
+		.replace(/!\[([^\]]*)\]\([^)]+\)/g, (_, alt: string) => alt ? `[Bild: ${alt}]` : "[Bild]")
 		.replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
 		.replace(/^\s*(#{1,3}|>|[-*+]|\d+[.)])\s+/gm, "")
 		.replace(/^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$\n?/gm, "")

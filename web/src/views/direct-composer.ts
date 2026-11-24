@@ -13,10 +13,34 @@ const PRESETS: { label: string; spec: Partial<DirectSpec> }[] = [
 	{ label: "Ein Wort (Word Cloud)", spec: { kind: "text" } },
 ];
 
+interface Template { id: number; spec: DirectSpec; }
+
 @customElement("direct-composer")
 export class DirectComposer extends LightElement {
 	@property() error = "";
 	@state() private spec: DirectSpec = this.load();
+	/** eigene Vorlagen (nur wenn in diesem Browser angemeldet – sonst null, ohne Umleitung zur Anmeldung) */
+	@state() private templates: Template[] | null = null;
+
+	override connectedCallback() {
+		super.connectedCallback();
+		void fetch("api/directtemplates", { credentials: "same-origin" }).then(r => r.ok ? r.json() as Promise<Template[]> : null)
+			.then(t => { this.templates = t; }).catch(() => { });
+	}
+	private async saveTemplate() {
+		const s = this.spec;
+		if (!s.text.trim()) { this.error = "Bitte zuerst eine Frage eingeben."; return; }
+		const r = await fetch("api/directtemplates", { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ ...s, options: s.kind === "choice" ? s.options.map(o => o.trim()) : [] }) });
+		const d = await r.json().catch(() => ({})) as { id?: number; error?: string };
+		if (!r.ok) { this.error = d.error ?? "Vorlage konnte nicht gespeichert werden."; return; }
+		this.templates = [...(this.templates ?? []), { id: d.id!, spec: { ...s } }];
+	}
+	private async delTemplate(t: Template) {
+		if (!confirm(`Vorlage „${t.spec.text}“ löschen?`)) return;
+		await fetch(`api/directtemplates/${t.id}`, { method: "DELETE", credentials: "same-origin" });
+		this.templates = (this.templates ?? []).filter(x => x.id !== t.id);
+	}
 
 	private load(): DirectSpec {
 		return { text: "", kind: "choice", options: ["", ""], multi: false, live: true, min: null, max: null, unit: "" };
@@ -45,6 +69,9 @@ export class DirectComposer extends LightElement {
 			<form class="dc-panel" @submit=${(e: Event) => this.submit(e)}>
 				<h2>⚡ Direktfrage ans Publikum</h2>
 				<div class="dc-presets">${PRESETS.map(p => html`<button type="button" @click=${() => this.preset(p.spec)}>${p.label}</button>`)}</div>
+				${this.templates?.length ? html`<div class="dc-presets mine" aria-label="Meine Vorlagen"><span class="dc-lbl">Meine Vorlagen:</span>
+					${this.templates.map(t => html`<span class="dc-tpl"><button type="button" title=${t.spec.text} @click=${() => this.preset({ ...t.spec, options: [...(t.spec.options ?? [])] })}>${t.spec.text.length > 32 ? t.spec.text.slice(0, 30) + "…" : t.spec.text}</button><button type="button" class="x" title="Vorlage löschen" aria-label="Vorlage löschen" @click=${() => this.delTemplate(t)}>✕</button></span>`)}
+				</div>` : nothing}
 				${this.error ? html`<div class="dc-error" role="alert">${this.error}</div>` : nothing}
 				<label class="dc-field"><span>Frage</span>
 					<textarea maxlength="300" required rows="2" .value=${s.text} @input=${(e: InputEvent) => this.set("text", (e.target as HTMLTextAreaElement).value)}></textarea></label>
@@ -74,6 +101,7 @@ export class DirectComposer extends LightElement {
 				<label class="dc-check"><input type="checkbox" .checked=${s.live} @change=${(e: Event) => this.set("live", (e.target as HTMLInputElement).checked)}>
 					Ergebnisse live aufbauen (sonst erst nach dem Schließen sichtbar)</label>
 				<div class="dc-actions">
+					${this.templates ? html`<button type="button" class="dc-save" @click=${() => this.saveTemplate()} title="Diese Frage für später speichern">☆ Als Vorlage speichern</button>` : nothing}
 					<button type="button" @click=${() => this.cancel()}>Abbrechen</button>
 					<button type="submit" class="primary">Frage stellen ▶</button>
 				</div>

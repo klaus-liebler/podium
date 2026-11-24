@@ -14,3 +14,5 @@ echo "gesichert: $datei"
 # Schlüssel (Anmelde-Cookies, SAML-Zertifikat des Hochschul-Logins) – nur der jeweils aktuelle Stand
 if [[ -d /var/lib/podium/schluessel ]]; then mkdir -p "$ZIEL/schluessel"; chmod 700 "$ZIEL/schluessel"; cp -a /var/lib/podium/schluessel/. "$ZIEL/schluessel/"; echo "Schlüssel gesichert: $ZIEL/schluessel"; fi
 if [[ -d /var/lib/podium/musik ]]; then mkdir -p "$ZIEL/musik"; cp -a --update /var/lib/podium/musik/. "$ZIEL/musik/"; echo "Musik gesichert: $ZIEL/musik"; fi
+# Bilder in Fragen (Quiz-Editor): ebenfalls als fortlaufender Spiegel
+if [[ -d /var/lib/podium/bilder ]]; then mkdir -p "$ZIEL/bilder"; cp -a --update /var/lib/podium/bilder/. "$ZIEL/bilder/"; echo "Bilder gesichert: $ZIEL/bilder"; fi

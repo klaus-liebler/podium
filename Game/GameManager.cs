@@ -6,6 +6,12 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Podium.Game;
 
+/// <summary>Unter der Kurs-PIN läuft noch eine eigene Runde – die Oberfläche fragt, ob sie geschlossen werden soll.</summary>
+public sealed class PinBusyException(string pin) : InvalidOperationException($"Unter der Kurs-PIN {pin} läuft noch eine Runde.")
+{
+    public string Pin { get; } = pin;
+}
+
 public sealed class GameManager(IHubContext<GameHub> hub, IServiceScopeFactory scopes, ILogger<GameManager> log)
 {
     public const int IntroMs = 4500;
@@ -19,32 +25,57 @@ public sealed class GameManager(IHubContext<GameHub> hub, IServiceScopeFactory s
 
     // ------------------------------------------------------------------ Erzeugen
 
-    public async Task<Game> CreateAsync(int quizId, string joinBase, int ownerId)
+    /// <summary>
+    /// Neue Runde. only = Fragenauswahl (Indizes in Quiz-Reihenfolge, null = alle); folderId = Ordner für die Kurs-PIN bei
+    /// Live-Fragerunden (bei Quizzen gilt der Ordner des Quiz); replace = eine noch offene eigene Runde unter der Kurs-PIN schließen.
+    /// </summary>
+    public async Task<Game> CreateAsync(int quizId, string joinBase, int ownerId, int[]? only = null, int? folderId = null, bool replace = false)
     {
         Cleanup();
-        string title = "Live-Fragerunde";
+        string title = "Live-Fragerunde", theme = "", music = "";
         int quizIdValue = 0;
         var questions = new List<QuestionSnap>();
+        using var scope = scopes.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDb>();
         if (quizId > 0)
         {
-            using var scope = scopes.CreateScope();
-            var db = scope.ServiceProvider.GetRequiredService<AppDb>();
             var quiz = await db.Quizzes.Include(q => q.Questions).ThenInclude(q => q.Options)
-                .AsNoTracking().FirstOrDefaultAsync(q => q.Id == quizId && q.OwnerId == ownerId)
+                .AsNoTracking().FirstOrDefaultAsync(q => q.Id == quizId && q.OwnerId == ownerId && q.DeletedUtc == null)
                 ?? throw new InvalidOperationException("Quiz nicht gefunden");
+            var chosen = only is { Length: > 0 } ? only.ToHashSet() : null;
             questions = quiz.Questions.OrderBy(q => q.Order)
-                .Where(q => q.Options.Count >= 2 && q.Options.Any(o => o.IsCorrect))
-                .Select(q => new QuestionSnap(q.Text, Math.Clamp(q.TimeLimitSeconds, 5, 240), Math.Clamp(q.PointsMultiplier, 0, 2),
-                    q.Options.OrderBy(o => o.Order).Take(6).Select(o => new OptionSnap(o.Text, o.IsCorrect)).ToList()))
+                .Where((q, i) => chosen == null || chosen.Contains(i))
+                .Where(Playable)
+                .Select(Snap)
                 .ToList();
-            if (questions.Count == 0) throw new InvalidOperationException("Das Quiz enthält keine spielbaren Fragen (mind. 2 Antworten, mind. 1 richtig).");
+            if (questions.Count == 0) throw new InvalidOperationException(chosen == null
+                ? "Das Quiz enthält keine spielbaren Fragen." : "Bitte mindestens eine spielbare Frage auswählen.");
             title = quiz.Title;
+            theme = quiz.Theme;
+            music = quiz.MusicJson;
             quizIdValue = quiz.Id;
+            folderId = quiz.FolderId;
         }
 
+        // Kurs-PIN des Ordners (falls festgelegt), sonst zufällig – aber nie eine reservierte Kurs-PIN
+        var coursePin = folderId is int fid ? await db.QuizFolders.Where(f => f.Id == fid && f.OwnerId == ownerId).Select(f => f.Pin).FirstOrDefaultAsync() : null;
         string pin;
-        do pin = RandomNumberGenerator.GetInt32(100000, 1000000).ToString();
-        while (_games.ContainsKey(pin));
+        if (coursePin != null)
+        {
+            if (Get(coursePin) is { } running)
+            {
+                if (running.OwnerId != ownerId) throw new InvalidOperationException("Die Kurs-PIN ist gerade belegt.");
+                if (!replace) throw new PinBusyException(coursePin);
+                await CloseAsync(running);
+            }
+            pin = coursePin;
+        }
+        else
+        {
+            var reserved = (await db.QuizFolders.Where(f => f.Pin != null).Select(f => f.Pin!).ToListAsync()).ToHashSet();
+            do pin = RandomNumberGenerator.GetInt32(100000, 1000000).ToString();
+            while (_games.ContainsKey(pin) || reserved.Contains(pin));
+        }
 
         var game = new Game
         {
@@ -54,6 +85,8 @@ public sealed class GameManager(IHubContext<GameHub> hub, IServiceScopeFactory s
             OwnerId = ownerId,
             QuizTitle = title,
             Questions = questions,
+            Theme = theme,
+            MusicJson = music,
             // Live-Fragerunde: QR führt direkt (anonym) zur Antwortseite; Quiz: Beitritt mit Name + Avatar
             JoinUrl = questions.Count == 0 ? $"{joinBase.TrimEnd('/')}/#/ask/{pin}" : $"{joinBase.TrimEnd('/')}/#/join/{pin}",
         };
@@ -61,6 +94,36 @@ public sealed class GameManager(IHubContext<GameHub> hub, IServiceScopeFactory s
         log.LogInformation("Spiel {Pin} ({Title}) erstellt", pin, title);
         return game;
     }
+
+    /// <summary>Kann diese Frage gespielt werden? (gleiche Regeln wie QuestionDto.Validate)</summary>
+    public static bool Playable(Question q) => QuestionKinds.Norm(q.Kind) switch
+    {
+        QuestionKinds.Estimate => q.CorrectValue is { } v && double.IsFinite(v),
+        QuestionKinds.Order => q.Options.Count >= 2,
+        _ => q.Options.Count >= 2 && q.Options.Any(o => o.IsCorrect),
+    };
+
+    public static QuestionSnap Snap(Question q)
+    {
+        var kind = QuestionKinds.Norm(q.Kind);
+        var opts = kind == QuestionKinds.Estimate ? [] : q.Options.OrderBy(o => o.Order).Take(6).Select(o => new OptionSnap(o.Text, kind == QuestionKinds.Order || o.IsCorrect)).ToList();
+        int[]? shown = null;
+        if (kind == QuestionKinds.Order)
+        {
+            // gemischt anzeigen – nie schon in der richtigen Reihenfolge
+            var idx = Enumerable.Range(0, opts.Count).ToArray();
+            do RandomNumberGenerator.Shuffle(idx.AsSpan()); while (idx.Select((v, i) => v == i).All(x => x));
+            shown = idx;
+        }
+        return new QuestionSnap(q.Text, Math.Clamp(q.TimeLimitSeconds, 5, 240), Math.Clamp(q.PointsMultiplier, 0, 2), opts,
+            kind, q.Explanation, q.Notes, q.CorrectValue, Math.Max(0, q.Tolerance ?? 0), q.Unit, shown);
+    }
+
+    /// <summary>Offene Räume eines Kontos (für „Offene Räume“ im Dozentenbereich und die Fernbedienung)</summary>
+    public List<Game> ForOwner(int ownerId) => _games.Values.Where(g => g.OwnerId == ownerId).OrderByDescending(g => g.CreatedUtc).ToList();
+
+    /// <summary>Befehl an die Leinwand weiterreichen (Fernbedienung → Leinwand, z. B. Sieger-Song ausblenden)</summary>
+    public Task CommandAsync(Game g, string cmd) => hub.Clients.Group(HostGroup(g.Pin)).SendAsync("command", cmd);
 
     void Cleanup()
     {
@@ -184,7 +247,8 @@ public sealed class GameManager(IHubContext<GameHub> hub, IServiceScopeFactory s
         await SendHostAsync(g);
     }
 
-    public async Task<bool> AnswerAsync(Game g, string connectionId, int questionIndex, int[] choices)
+    /// <summary>Antwort: Auswahl (choices), Reihenfolge (choices = Folge aller Anzeigepositionen) oder Schätzwert (number)</summary>
+    public async Task<bool> AnswerAsync(Game g, string connectionId, int questionIndex, int[]? choices, double? number = null)
     {
         bool allAnswered;
         int version;
@@ -194,11 +258,27 @@ public sealed class GameManager(IHubContext<GameHub> hub, IServiceScopeFactory s
             var p = g.Players.Values.FirstOrDefault(x => x.ConnectionId == connectionId);
             if (p == null || p.Answers.ContainsKey(questionIndex)) return false;
             var q = g.Current!;
-            var clean = (choices ?? []).Where(c => c >= 0 && c < q.Options.Count).Distinct().Order().ToArray();
-            if (clean.Length == 0) return false;
-            if (!q.Multi && clean.Length > 1) clean = clean[..1];
+            int[] clean;
+            if (q.IsEstimate)
+            {
+                if (number is not { } n || !double.IsFinite(n)) return false;
+                clean = [];
+            }
+            else if (q.IsOrder)
+            {
+                clean = choices ?? [];
+                if (clean.Length != q.Options.Count || clean.Distinct().Count() != clean.Length || clean.Any(c => c < 0 || c >= q.Options.Count)) return false;
+                number = null;
+            }
+            else
+            {
+                clean = (choices ?? []).Where(c => c >= 0 && c < q.Options.Count).Distinct().Order().ToArray();
+                if (clean.Length == 0) return false;
+                if (!q.Multi && clean.Length > 1) clean = clean[..1];
+                number = null;
+            }
             var elapsed = Math.Max(0, (DateTime.UtcNow - g.PhaseStartUtc).TotalMilliseconds);
-            p.Answers[questionIndex] = new PlayerAnswer { Choices = clean, ElapsedMs = elapsed };
+            p.Answers[questionIndex] = new PlayerAnswer { Choices = clean, Number = number, ElapsedMs = elapsed };
             allAnswered = g.Players.Values.Where(x => x.Connected).All(x => x.Answers.ContainsKey(questionIndex));
             version = g.Version;
         }
@@ -242,6 +322,34 @@ public sealed class GameManager(IHubContext<GameHub> hub, IServiceScopeFactory s
                 await PersistAsync(g);
                 break;
         }
+    }
+
+    /// <summary>
+    /// Frage überspringen: in Intro/Antwortzeit die laufende Frage (Antworten verfallen), im Zwischenstand die nächste.
+    /// Übersprungene Fragen zählen weder für Punkte noch für die Statistik.
+    /// </summary>
+    public async Task SkipAsync(Game g)
+    {
+        int v, target;
+        lock (g.Lock)
+        {
+            v = g.Version;
+            switch (g.Phase)
+            {
+                case Phase.Intro or Phase.Answering:
+                    g.Skipped.Add(g.QuestionIndex);
+                    foreach (var p in g.Players.Values) p.Answers.Remove(g.QuestionIndex);
+                    target = g.QuestionIndex + 1;
+                    break;
+                case Phase.Scoreboard:
+                    g.Skipped.Add(g.QuestionIndex + 1);
+                    target = g.QuestionIndex + 2;
+                    break;
+                default: return;
+            }
+        }
+        if (target < g.Questions.Count) await StartQuestionAsync(g, target, v);
+        else await SetPhaseAsync(g, v, Phase.Podium);
     }
 
     public async Task FinishEarlyAsync(Game g)
@@ -314,17 +422,20 @@ public sealed class GameManager(IHubContext<GameHub> hub, IServiceScopeFactory s
         try { await action(); } catch (Exception ex) { log.LogError(ex, "Timer-Aktion fehlgeschlagen"); }
     });
 
-    /// <summary>Punkte: nur exakt richtige Auswahl zählt. Bis 1000 Punkte, linear auf 500 fallend über die Zeit, plus Serienbonus.</summary>
+    /// <summary>
+    /// Punkte: nur exakt Richtiges zählt (Auswahl genau getroffen, Reihenfolge vollständig richtig, Schätzung innerhalb der
+    /// Toleranz). Bis 1000 Punkte, linear auf 500 fallend über die Zeit, plus Serienbonus.
+    /// </summary>
     static void Score(Game g)
     {
         var q = g.Current!;
-        var correctSet = q.Options.Select((o, i) => (o, i)).Where(x => x.o.Correct).Select(x => x.i).ToArray();
+        var correctSet = q.IsOrder ? q.CorrectSequence : q.Options.Select((o, i) => (o, i)).Where(x => x.o.Correct).Select(x => x.i).ToArray();
         var limitMs = q.TimeLimitSeconds * 1000.0;
         foreach (var p in g.Players.Values)
         {
             if (p.Answers.TryGetValue(g.QuestionIndex, out var a))
             {
-                a.Correct = a.Choices.SequenceEqual(correctSet);
+                a.Correct = q.IsEstimate ? a.Number is { } n && q.Hits(n) : a.Choices.SequenceEqual(correctSet);
                 if (a.Correct)
                 {
                     p.Streak++;
@@ -356,6 +467,7 @@ public sealed class GameManager(IHubContext<GameHub> hub, IServiceScopeFactory s
                 Pin = g.Pin,
                 StartedUtc = g.StartedUtc,
                 FinishedUtc = DateTime.UtcNow,
+                StatsJson = System.Text.Json.JsonSerializer.Serialize(Views.FinalStats(g), new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web)),
                 Players = g.Ranked.Select(p => new GameSessionPlayer
                 {
                     Nickname = p.Nickname,

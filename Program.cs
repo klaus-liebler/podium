@@ -9,6 +9,7 @@ using Podium.Data;
 using Podium.Game;
 using Podium.Import;
 using Podium.Music;
+using Podium.Teaching;
 using QRCoder;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -97,6 +98,8 @@ api.MapAuth();
 api.MapSaml(app.Configuration);
 api.MapInvites();
 api.MapMusic(MusicApi.Dir(app.Configuration, dbPath));
+api.MapTeaching(TeachingApi.MediaDir(app.Configuration, dbPath));
+api.MapAi();
 
 // ---------------------------------------------------------------- öffentlich (Leinwand/Handy)
 api.MapGet("/qr", (string data) =>
@@ -111,7 +114,8 @@ api.MapGet("/qr", (string data) =>
 // ---------------------------------------------------------------- Dozentenbereich (Anmeldung nötig, nur eigene Daten)
 var my = api.MapGroup("").RequireAuthorization();
 
-IQueryable<Quiz> Own(AppDb db, ClaimsPrincipal u) { var id = u.UserId(); return db.Quizzes.Where(q => q.OwnerId == id); }
+// Papierkorb-Inhalte gelten hier als nicht vorhanden (siehe Teaching/TeachingApi.cs)
+IQueryable<Quiz> Own(AppDb db, ClaimsPrincipal u) { var id = u.UserId(); return db.Quizzes.Where(q => q.OwnerId == id && q.DeletedUtc == null); }
 // Ordner-ID nur übernehmen, wenn der Ordner dem Konto gehört
 async Task<int?> OwnFolder(AppDb db, ClaimsPrincipal u, int? folderId)
 {
@@ -123,7 +127,8 @@ IQueryable<Quiz> OwnFull(AppDb db, ClaimsPrincipal u) => Own(db, u).Include(x =>
 
 my.MapGet("/quizzes", async (AppDb db, ClaimsPrincipal u) =>
     await Own(db, u).OrderByDescending(q => q.UpdatedUtc)
-        .Select(q => new { q.Id, q.Title, q.Description, q.FolderId, q.UpdatedUtc, QuestionCount = q.Questions.Count })
+        .Select(q => new { q.Id, q.Title, q.Description, q.FolderId, q.UpdatedUtc, QuestionCount = q.Questions.Count, Shared = q.ShareToken != null,
+            LastPlayedUtc = db.GameSessions.Where(s => s.QuizId == q.Id && s.OwnerId == q.OwnerId).Max(s => (DateTime?)s.StartedUtc) })
         .ToListAsync());
 
 my.MapGet("/quizzes/{id:int}", async (int id, AppDb db, ClaimsPrincipal u) =>
@@ -159,16 +164,17 @@ my.MapPost("/quizzes/{id:int}/copy", async (int id, AppDb db, ClaimsPrincipal u)
 {
     var q = await OwnFull(db, u).AsNoTracking().FirstOrDefaultAsync(x => x.Id == id);
     if (q == null) return Results.NotFound();
-    var copy = new Quiz { OwnerId = u.UserId(), FolderId = q.FolderId };
+    var copy = new Quiz { OwnerId = u.UserId(), FolderId = q.FolderId, MusicJson = q.MusicJson };
     (QuizDto.From(q) with { Title = q.Title + " (Kopie)" }).ApplyTo(copy);
     db.Quizzes.Add(copy);
     await db.SaveChangesAsync();
     return Results.Ok(new { copy.Id });
 });
 
+// Löschen = in den Papierkorb (wiederherstellbar, nach 30 Tagen endgültig weg)
 my.MapDelete("/quizzes/{id:int}", async (int id, AppDb db, ClaimsPrincipal u) =>
 {
-    await Own(db, u).Where(q => q.Id == id).ExecuteDeleteAsync();
+    await Own(db, u).Where(q => q.Id == id).ExecuteUpdateAsync(s => s.SetProperty(q => q.DeletedUtc, DateTime.UtcNow).SetProperty(q => q.ShareToken, (string?)null));
     return Results.NoContent();
 });
 
@@ -186,7 +192,7 @@ my.MapGet("/quizzes/{id:int}/export", async (int id, AppDb db, ClaimsPrincipal u
 my.MapGet("/folders", async (AppDb db, ClaimsPrincipal u) =>
 {
     var id = u.UserId();
-    return await db.QuizFolders.Where(f => f.OwnerId == id).OrderBy(f => f.Name).Select(f => new { f.Id, f.Name }).ToListAsync();
+    return await db.QuizFolders.Where(f => f.OwnerId == id).OrderBy(f => f.Name).Select(f => new { f.Id, f.Name, f.Pin }).ToListAsync();
 });
 
 my.MapPost("/folders", async (FolderRequest req, AppDb db, ClaimsPrincipal u) =>
@@ -295,44 +301,91 @@ my.MapPost("/games", async (CreateGameRequest req, GameManager games, HttpContex
 {
     try
     {
-        var g = await games.CreateAsync(req.QuizId, Program.PublicBase(ctx, cfg), u.UserId());
-        return Results.Ok(new { g.Pin, g.HostKey });
+        var g = await games.CreateAsync(req.QuizId, Program.PublicBase(ctx, cfg), u.UserId(), req.Only, req.FolderId, req.Replace);
+        return Results.Ok(new { g.Pin, g.HostKey, g.JoinUrl });
     }
+    catch (PinBusyException ex) { return Results.Json(new { error = ex.Message, busy = true, pin = ex.Pin }, statusCode: 409); }
     catch (InvalidOperationException ex) { return Results.BadRequest(new { error = ex.Message }); }
 });
 
 app.Run();
 
-record CreateGameRequest(int QuizId);
+/// <summary>Only = Fragenauswahl (Indizes), FolderId = Kurs-PIN für Live-Fragerunden, Replace = laufende Runde unter der Kurs-PIN schließen</summary>
+record CreateGameRequest(int QuizId, int[]? Only = null, int? FolderId = null, bool Replace = false);
 record ImportUrlRequest(string Url);
 record FolderRequest(string? Name);
 record MoveRequest(int? FolderId);
 
-record OptionDto(string Text, bool IsCorrect);
-record QuestionDto(string Text, int TimeLimitSeconds, int PointsMultiplier, List<OptionDto> Options);
-record QuizDto(int Id, string Title, string? Description, List<QuestionDto> Questions)
+public record OptionDto(string Text, bool IsCorrect);
+/// <summary>Austauschformat einer Frage (Export podium-*.json, Editor, SchoolCraft). Alle Felder ab Kind sind optional.</summary>
+public record QuestionDto(string Text, int TimeLimitSeconds, int PointsMultiplier, List<OptionDto> Options,
+    string? Kind = null, string? Explanation = null, string? Notes = null, double? CorrectValue = null, double? Tolerance = null, string? Unit = null)
+{
+    public static QuestionDto From(Question x) => new(x.Text, x.TimeLimitSeconds, x.PointsMultiplier,
+        x.Options.OrderBy(o => o.Order).Select(o => new OptionDto(o.Text, o.IsCorrect)).ToList(),
+        QuestionKinds.Norm(x.Kind), x.Explanation, x.Notes, x.CorrectValue, x.Tolerance, x.Unit);
+
+    /// <summary>Fehlertext oder null (n = Fragennummer für die Meldung)</summary>
+    public string? Validate(int n)
+    {
+        if (string.IsNullOrWhiteSpace(Text)) return $"Frage {n}: Fragetext fehlt.";
+        if (TimeLimitSeconds is < 5 or > 240) return $"Frage {n}: Zeit muss zwischen 5 und 240 Sekunden liegen.";
+        if ((Explanation?.Length ?? 0) > 2000 || (Notes?.Length ?? 0) > 2000) return $"Frage {n}: Erklärung bzw. Notizen sind zu lang (max. 2000 Zeichen).";
+        switch (QuestionKinds.Norm(Kind))
+        {
+            case QuestionKinds.Estimate:
+                if (CorrectValue is not { } v || !double.IsFinite(v)) return $"Frage {n}: Schätzfrage ohne richtigen Wert.";
+                if (Tolerance is { } t && (!double.IsFinite(t) || t < 0)) return $"Frage {n}: Toleranz darf nicht negativ sein.";
+                return null;
+            case QuestionKinds.Order:
+                if (Options is null || Options.Count is < 2 or > 6) return $"Frage {n}: 2 bis 6 Elemente zum Anordnen nötig.";
+                if (Options.Any(o => string.IsNullOrWhiteSpace(o.Text))) return $"Frage {n}: leeres Element.";
+                return null;
+            default:
+                if (Options is null || Options.Count is < 2 or > 6) return $"Frage {n}: 2 bis 6 Antwortmöglichkeiten nötig.";
+                if (Options.Any(o => string.IsNullOrWhiteSpace(o.Text))) return $"Frage {n}: leere Antwortmöglichkeit.";
+                if (!Options.Any(o => o.IsCorrect)) return $"Frage {n}: mindestens eine Antwort muss richtig sein.";
+                return null;
+        }
+    }
+
+    public Question ToEntity(int order)
+    {
+        var kind = QuestionKinds.Norm(Kind);
+        return new Question
+        {
+            Order = order,
+            Text = Text.Trim(),
+            TimeLimitSeconds = TimeLimitSeconds,
+            PointsMultiplier = Math.Clamp(PointsMultiplier, 0, 2),
+            Kind = kind,
+            Explanation = Explanation?.Trim() ?? "",
+            Notes = Notes?.Trim() ?? "",
+            CorrectValue = kind == QuestionKinds.Estimate ? CorrectValue : null,
+            Tolerance = kind == QuestionKinds.Estimate ? Math.Max(0, Tolerance ?? 0) : null,
+            Unit = kind == QuestionKinds.Estimate ? Cut((Unit ?? "").Trim(), 12) : "",
+            Options = kind == QuestionKinds.Estimate ? [] : (Options ?? []).Select((o, j) => new AnswerOption
+                { Order = j, Text = o.Text.Trim(), IsCorrect = kind == QuestionKinds.Order || o.IsCorrect }).ToList(),
+        };
+    }
+    static string Cut(string s, int n) => s.Length > n ? s[..n] : s;
+}
+public record QuizDto(int Id, string Title, string? Description, List<QuestionDto> Questions)
 {
     /// <summary>nur beim Laden und Neuanlegen ausgewertet; Speichern ändert den Ordner nicht</summary>
     public int? FolderId { get; init; }
+    /// <summary>optional: 3D-Welt ("" = wie zuletzt gewählt)</summary>
+    public string? Theme { get; init; }
 
     public static QuizDto From(Quiz q) => new(q.Id, q.Title, q.Description,
-        q.Questions.OrderBy(x => x.Order).Select(x => new QuestionDto(x.Text, x.TimeLimitSeconds, x.PointsMultiplier,
-            x.Options.OrderBy(o => o.Order).Select(o => new OptionDto(o.Text, o.IsCorrect)).ToList())).ToList()) { FolderId = q.FolderId };
+        q.Questions.OrderBy(x => x.Order).Select(QuestionDto.From).ToList()) { FolderId = q.FolderId, Theme = q.Theme };
 
     public string? Validate()
     {
         if (string.IsNullOrWhiteSpace(Title)) return "Bitte einen Titel angeben.";
         if (Questions is null || Questions.Count == 0) return "Mindestens eine Frage ist nötig.";
         for (int i = 0; i < Questions.Count; i++)
-        {
-            var q = Questions[i];
-            var n = i + 1;
-            if (string.IsNullOrWhiteSpace(q.Text)) return $"Frage {n}: Fragetext fehlt.";
-            if (q.Options is null || q.Options.Count is < 2 or > 6) return $"Frage {n}: 2 bis 6 Antwortmöglichkeiten nötig.";
-            if (q.Options.Any(o => string.IsNullOrWhiteSpace(o.Text))) return $"Frage {n}: leere Antwortmöglichkeit.";
-            if (!q.Options.Any(o => o.IsCorrect)) return $"Frage {n}: mindestens eine Antwort muss richtig sein.";
-            if (q.TimeLimitSeconds is < 5 or > 240) return $"Frage {n}: Zeit muss zwischen 5 und 240 Sekunden liegen.";
-        }
+            if (Questions[i].Validate(i + 1) is { } err) return err;
         return null;
     }
 
@@ -340,14 +393,8 @@ record QuizDto(int Id, string Title, string? Description, List<QuestionDto> Ques
     {
         q.Title = Title.Trim();
         q.Description = Description?.Trim() ?? "";
-        q.Questions = Questions.Select((x, i) => new Question
-        {
-            Order = i,
-            Text = x.Text.Trim(),
-            TimeLimitSeconds = x.TimeLimitSeconds,
-            PointsMultiplier = Math.Clamp(x.PointsMultiplier, 0, 2),
-            Options = x.Options.Select((o, j) => new AnswerOption { Order = j, Text = o.Text.Trim(), IsCorrect = o.IsCorrect }).ToList()
-        }).ToList();
+        if (Theme != null) q.Theme = Theme.Length > 20 ? "" : Theme;
+        q.Questions = Questions.Select((x, i) => x.ToEntity(i)).ToList();
     }
 }
 

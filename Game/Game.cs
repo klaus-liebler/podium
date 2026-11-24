@@ -35,9 +35,25 @@ public sealed class DirectQuestion
 }
 
 public sealed record OptionSnap(string Text, bool Correct);
-public sealed record QuestionSnap(string Text, int TimeLimitSeconds, int PointsMultiplier, List<OptionSnap> Options)
+/// <summary>
+/// Momentaufnahme einer Frage für eine Runde. Kind: "choice" | "estimate" | "order".
+/// Reihenfolge: Options stehen in der richtigen Reihenfolge, angezeigt wird in der Reihenfolge Shown
+/// (Anzeigeposition p zeigt Options[Shown[p]]); Antworten sind Folgen von Anzeigepositionen.
+/// </summary>
+public sealed record QuestionSnap(string Text, int TimeLimitSeconds, int PointsMultiplier, List<OptionSnap> Options,
+    string Kind = "choice", string Explanation = "", string Notes = "", double? CorrectValue = null, double Tolerance = 0, string Unit = "", int[]? Shown = null)
 {
-    public bool Multi => Options.Count(o => o.Correct) > 1;
+    public bool IsChoice => Kind == "choice";
+    public bool IsEstimate => Kind == "estimate";
+    public bool IsOrder => Kind == "order";
+    public bool Multi => IsChoice && Options.Count(o => o.Correct) > 1;
+    /// <summary>Optionen in Anzeigereihenfolge</summary>
+    public IEnumerable<OptionSnap> Displayed => IsOrder && Shown != null ? Shown.Select(i => Options[i]) : Options;
+    /// <summary>Reihenfolge: richtige Folge von Anzeigepositionen</summary>
+    public int[] CorrectSequence => Shown == null ? Enumerable.Range(0, Options.Count).ToArray()
+        : Enumerable.Range(0, Options.Count).Select(k => Array.IndexOf(Shown, k)).ToArray();
+    /// <summary>Schätzfrage: liegt der Wert in der Toleranz?</summary>
+    public bool Hits(double v) => CorrectValue is { } c && Math.Abs(v - c) <= Tolerance + Math.Abs(c) * 1e-9 + 1e-12;
 }
 
 /// <summary>Gestaltbarer Avatar: jeweils ein Index in eine feste Teile-Liste (Client rendert SVG).</summary>
@@ -52,7 +68,10 @@ public sealed record Avatar(int Shape, int Color, int Eyes, int Mouth, int Hat, 
 
 public sealed class PlayerAnswer
 {
+    /// <summary>Auswahl (sortiert) bzw. bei Reihenfolge die Folge der Anzeigepositionen; Schätzfrage: leer</summary>
     public required int[] Choices { get; init; }
+    /// <summary>Schätzfrage: geschätzter Wert</summary>
+    public double? Number { get; init; }
     public required double ElapsedMs { get; init; }
     public bool Correct { get; set; }
     public int Points { get; set; }
@@ -84,6 +103,12 @@ public sealed class Game
     public required string QuizTitle { get; init; }
     public required List<QuestionSnap> Questions { get; init; }
     public required string JoinUrl { get; init; }
+    /// <summary>3D-Welt aus dem Quiz ("" = Leinwand entscheidet)</summary>
+    public string Theme { get; init; } = "";
+    /// <summary>Quiz mit eigener Musikauswahl (sonst die des Kontos)</summary>
+    public string MusicJson { get; init; } = "";
+    /// <summary>Übersprungene Fragen (zählen nicht in Punkte und Statistik)</summary>
+    public HashSet<int> Skipped { get; } = new();
     public DateTime CreatedUtc { get; } = DateTime.UtcNow;
     public DateTime StartedUtc { get; set; }
 

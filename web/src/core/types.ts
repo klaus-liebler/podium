@@ -26,14 +26,30 @@ export interface HostPlayer {
 	connected: boolean; anon: boolean; streak: number; lastPoints: number; lastCorrect: boolean; correctTotal: number; answered: boolean;
 }
 
+/** Fragetypen: Auswahl, Schätzfrage (Zahl mit Toleranz), Reihenfolge */
+export type QuestionKind = "choice" | "estimate" | "order";
+
 export interface HostQuestion {
-	text: string; timeLimit: number; multi: boolean; correctCount: number; points: number;
+	text: string; kind?: QuestionKind; timeLimit: number; multi: boolean; correctCount: number; points: number;
+	/** Reihenfolge: Elemente in Anzeigereihenfolge (gemischt) */
 	options: { text: string; correct: boolean | null }[];
+	unit?: string;
+	/** nach der Auflösung: Reihenfolge = richtige Folge von Anzeigepositionen, Schätzfrage = richtiger Wert */
+	correctOrder?: number[] | null; correctValue?: number | null; tolerance?: number;
+	explanation?: string;
+	/** nur für die Fernbedienung */
+	notes?: string;
+}
+
+export interface EstimateStats {
+	n: number; mean: number | null; median: number | null; min: number | null; max: number | null; within: number;
+	values: number[]; closest: { nick: string; value: number }[];
 }
 
 export interface QuestionStat {
-	text: string; options: { text: string; correct: boolean }[]; distribution: number[];
+	text: string; kind?: QuestionKind; options: { text: string; correct: boolean }[]; distribution: number[];
 	answered: number; correct: number; players: number; avgMs: number;
+	skipped?: boolean; correctValue?: number | null; tolerance?: number; unit?: string; median?: number | null;
 }
 
 export interface HostState {
@@ -43,22 +59,39 @@ export interface HostState {
 	distribution: number[] | null; correctCount: number; avgMs: number;
 	players: HostPlayer[]; stats: { questions: QuestionStat[] } | null;
 	hasQuiz: boolean; direct: HostDirect | null;
+	estimate?: EstimateStats | null;
+	/** nächste (nicht übersprungene) Frage – für die Fernbedienung */
+	next?: { text: string; kind: QuestionKind } | null;
+	/** 3D-Welt aus dem Quiz ("" = Leinwand entscheidet) */
+	theme?: string;
+	skipped?: number;
 }
 
 export interface PlayerState {
 	role: "player"; pin: string; quizTitle: string; phase: Phase; version: number;
 	me: { id: string; nick: string; avatar: AvatarSpec; score: number; rank: number; streak: number };
 	playerCount: number; questionIndex: number; questionCount: number; remainingMs: number;
-	question: { text: string; multi: boolean; timeLimit: number; optionCount: number; options: string[]; correct: number[] | null } | null;
-	answer: { choices: number[]; correct: boolean | null; points: number } | null;
+	question: {
+		text: string; kind?: QuestionKind; multi: boolean; timeLimit: number; optionCount: number; options: string[]; correct: number[] | null;
+		unit?: string; correctOrder?: number[] | null; correctValue?: number | null; tolerance?: number; explanation?: string;
+	} | null;
+	answer: { choices: number[]; number?: number | null; correct: boolean | null; points: number } | null;
 	ahead: { nick: string; diff: number } | null;
 	correctTotal: number;
 	hasQuiz: boolean; direct: PlayerDirect | null;
 }
 
-export interface QuizSummary { id: number; title: string; description: string; folderId: number | null; updatedUtc: string; questionCount: number; }
-export interface QuizFolder { id: number; name: string; }
+export interface QuizSummary {
+	id: number; title: string; description: string; folderId: number | null; updatedUtc: string; questionCount: number;
+	shared?: boolean; lastPlayedUtc?: string | null;
+}
+export interface QuizFolder { id: number; name: string; pin?: string | null; }
 export interface OptionDto { text: string; isCorrect: boolean; }
-export interface QuestionDto { text: string; timeLimitSeconds: number; pointsMultiplier: number; options: OptionDto[]; }
-export interface QuizDto { id: number; title: string; description: string | null; folderId?: number | null; questions: QuestionDto[]; }
+export interface QuestionDto {
+	text: string; timeLimitSeconds: number; pointsMultiplier: number; options: OptionDto[];
+	kind?: QuestionKind; explanation?: string | null; notes?: string | null;
+	correctValue?: number | null; tolerance?: number | null; unit?: string | null;
+}
+export interface QuizDto { id: number; title: string; description: string | null; folderId?: number | null; theme?: string | null; questions: QuestionDto[]; }
+export interface OpenRoom { pin: string; hostKey: string; title: string; phase: Phase; hasQuiz: boolean; players: number; createdUtc: string; joinUrl: string; }
 export interface SessionSummary { id: number; quizTitle: string; startedUtc: string; finishedUtc: string | null; playerCount: number; winner: string | null; }

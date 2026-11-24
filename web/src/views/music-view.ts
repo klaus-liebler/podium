@@ -1,6 +1,6 @@
 // Musikmanager (Dozentenbereich): je Abschnitt Stücke wählen – mitgelieferte oder eigene Uploads. Gilt für alle Runden dieses Kontos.
 import { html, nothing } from "lit";
-import { customElement, state } from "lit/decorators.js";
+import { customElement, property, state } from "lit/decorators.js";
 import { LightElement } from "../core/util.ts";
 import { ApiError, api, getMe, teacherHeader, type Me } from "../core/session.ts";
 import { SLOTS, loadBuiltins, type Builtin, type MusicConfig, type Selection, type Upload } from "../audio/music-config.ts";
@@ -11,6 +11,11 @@ const mb = (n: number) => (n / 1_000_000).toLocaleString("de-DE", { maximumFract
 
 @customElement("music-view")
 export class MusicView extends LightElement {
+	/** > 0: eigene Musik für dieses Quiz (ersetzt je Abschnitt die Auswahl des Kontos) */
+	@property({ type: Number }) quizId = 0;
+	@state() private quizTitle = "";
+	/** Auswahl des Quiz (null = keine eigene, es gilt die des Kontos) */
+	@state() private quizSel: Selection | null = null;
 	@state() private me: Me | null = null;
 	@state() private builtins: Builtin[] = [];
 	@state() private cfg: MusicConfig | null = null;
@@ -34,23 +39,33 @@ export class MusicView extends LightElement {
 		if (!this.me) return;
 		try {
 			[this.builtins, this.cfg] = await Promise.all([loadBuiltins(), api<MusicConfig>("music")]);
-		} catch (e) { if ((e as ApiError).status !== 401) this.error = "Server nicht erreichbar."; }
+			if (this.quizId) {
+				const q = await api<{ title: string; selection: Selection | null }>(`music/quiz/${this.quizId}`);
+				this.quizTitle = q.title; this.quizSel = q.selection;
+			}
+		} catch (e) { if ((e as ApiError).status !== 401) this.error = this.quizId ? "Quiz nicht gefunden." : "Server nicht erreichbar."; }
 	}
 
-	private sel(slot: MusicSlot) { return this.cfg?.selection?.[slot] ?? []; }
+	private sel(slot: MusicSlot) { return (this.quizId ? this.quizSel?.[slot] : this.cfg?.selection?.[slot]) ?? []; }
+	private async save(next: Selection) {
+		try {
+			if (this.quizId) this.quizSel = (await api<{ selection: Selection | null }>(`music/quiz/${this.quizId}`, { method: "PUT", json: next })).selection;
+			else this.cfg = { ...this.cfg!, selection: await api<Selection>("music/selection", { method: "PUT", json: next }) };
+			this.error = "";
+		} catch (e) { this.error = (e as Error).message; }
+	}
+	private current(): Selection { return (this.quizId ? this.quizSel : this.cfg?.selection) ?? {}; }
 	private async toggle(slot: MusicSlot, ref: string, on: boolean) {
 		if (!this.cfg) return;
 		const list = this.sel(slot).filter(r => r !== ref);
 		if (on) list.push(ref);
-		const next: Selection = { ...this.cfg.selection, [slot]: list };
-		this.cfg = { ...this.cfg, selection: next };
-		try { this.cfg = { ...this.cfg, selection: await api<Selection>("music/selection", { method: "PUT", json: next }) }; this.error = ""; }
-		catch (e) { this.error = (e as Error).message; }
+		const next: Selection = { ...this.current(), [slot]: list };
+		if (this.quizId) this.quizSel = next; else this.cfg = { ...this.cfg, selection: next };
+		await this.save(next);
 	}
 	private async reset(slot: MusicSlot) {
 		if (!this.cfg) return;
-		const next: Selection = { ...this.cfg.selection, [slot]: [] };
-		this.cfg = { ...this.cfg, selection: await api<Selection>("music/selection", { method: "PUT", json: next }) };
+		await this.save({ ...this.current(), [slot]: [] });
 	}
 
 	private play(key: string, src: string, start = 0) {
@@ -102,19 +117,23 @@ export class MusicView extends LightElement {
 		const c = this.cfg;
 		const used = c?.uploads.reduce((a, u) => a + u.size, 0) ?? 0;
 		return html`
-			${teacherHeader(this.me, html`<a class="button" href="#/">← Zur Übersicht</a>`)}
+			${teacherHeader(this.me, this.quizId ? html`<a class="button" href="#/edit/${this.quizId}">← Zurück zum Quiz</a>` : html`<a class="button" href="#/">← Zur Übersicht</a>`)}
 			<main class="music">
-				<h2>🎵 Musik für meine Runden</h2>
+				${this.quizId ? html`<h2>🎵 Musik für „${this.quizTitle}“</h2>
+				<p class="muted">Eigene Musik nur für dieses Quiz. Abschnitte, in denen hier nichts angehakt ist, nutzen deine
+					<a href="#/music">allgemeine Musikauswahl</a> bzw. den Standard der 3D-Welt.</p>`
+				: html`<h2>🎵 Musik für meine Runden</h2>
 				<p class="muted">Wähle pro Abschnitt ein oder mehrere Stücke – bei mehreren wird abwechselnd gespielt.
-					Ist in einer Spalte nichts angehakt, gilt der <b>Standard</b> der jeweiligen 3D-Welt. Die Auswahl gilt für alle Runden dieses Kontos – laufende Leinwände übernehmen sie ab der nächsten Frage.</p>
+					Ist in einer Spalte nichts angehakt, gilt der <b>Standard</b> der jeweiligen 3D-Welt. Die Auswahl gilt für alle Runden dieses Kontos – laufende Leinwände übernehmen sie ab der nächsten Frage.
+					Einzelne Quizze können im Editor eine eigene Musik bekommen.</p>`}
 				${this.error ? html`<div class="msg err">${this.error}</div>` : nothing}
 				${this.info ? html`<div class="msg ok">${this.info}</div>` : nothing}
 				${!c ? html`<div class="box empty" style="padding:16px">Lade …</div>` : html`
 				<div class="box"><table class="music-table">
 					<thead>
 						<tr><th></th><th>Stück</th>${SLOTS.map(s => html`<th class="ck" title=${s.hint}>${s.label}<br>
-							${this.sel(s.id).length ? html`<button class="link" @click=${() => this.reset(s.id)} title="Auswahl leeren – Standard der 3D-Welt">zurücksetzen</button>`
-							: html`<span class="muted small">Standard</span>`}</th>`)}<th></th></tr>
+							${this.sel(s.id).length ? html`<button class="link" @click=${() => this.reset(s.id)} title=${this.quizId ? "Auswahl leeren – dann gilt die allgemeine Auswahl" : "Auswahl leeren – Standard der 3D-Welt"}>zurücksetzen</button>`
+							: html`<span class="muted small">${this.quizId ? "wie allgemein" : "Standard"}</span>`}</th>`)}<th></th></tr>
 					</thead>
 					<tbody>
 						<tr class="sep"><td colspan="7">Eigene Stücke ${c.uploads.length ? html`<span class="muted small">(${mb(used)} belegt)</span>` : nothing}</td></tr>

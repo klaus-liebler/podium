@@ -1,19 +1,26 @@
 // Szenen-Vorschau (Admin): spielt eine Runde lokal durch – ohne Server, mit 20 Beispielteilnehmenden –
 // und liefert dieselben HostState-Objekte wie der SignalR-Hub. So lässt sich jede 3D-Welt samt Musik schnell ansehen.
-import type { AvatarSpec, HostPlayer, HostQuestion, HostState, Phase } from "../core/types.ts";
+import type { AvatarSpec, EstimateStats, HostPlayer, HostQuestion, HostState, Phase, QuestionKind } from "../core/types.ts";
 import { rng } from "../three/themes/common.ts";
 import { randomAvatar } from "../core/avatar.ts";
 
 const NAMES = ["Mia", "Ben", "Emma", "Paul", "Hannah", "Leon", "Sofia", "Finn", "Lina", "Elias", "Ella", "Noah", "Clara", "Luis",
 	"Marie", "Jonas", "Lea", "Felix", "Ida", "Anton"];
-const QUESTIONS: { text: string; options: string[]; correct: number[]; secs: number }[] = [
-	{ text: "Welcher Planet ist der größte in unserem Sonnensystem?", options: ["Mars", "Jupiter", "Saturn", "Erde"], correct: [1], secs: 15 },
+/** Reihenfolge: options in richtiger Reihenfolge, shown = Anzeigereihenfolge; Schätzfrage: value ± tol */
+interface SimQ { text: string; kind?: QuestionKind; options: string[]; correct: number[]; secs: number; shown?: number[]; value?: number; tol?: number; unit?: string; explanation?: string; notes?: string; }
+const QUESTIONS: SimQ[] = [
+	{ text: "Welcher Planet ist der größte in unserem Sonnensystem?", options: ["Mars", "Jupiter", "Saturn", "Erde"], correct: [1], secs: 15,
+		explanation: "Jupiter hat gut den **11-fachen Durchmesser** der Erde.", notes: "Überleitung: Gasriesen" },
 	{ text: "Welche dieser Tiere sind Säugetiere?", options: ["Delfin", "Hai", "Fledermaus", "Pinguin"], correct: [0, 2], secs: 15 },
+	{ text: "Wie viele Knochen hat ein erwachsener Mensch?", kind: "estimate", options: [], correct: [], secs: 20, value: 206, tol: 10, unit: "",
+		explanation: "Babys haben noch rund 300 Knochen – viele wachsen später zusammen." },
+	{ text: "Ordne die Planeten nach ihrer Entfernung zur Sonne (nah → fern).", kind: "order", options: ["Merkur", "Venus", "Erde", "Mars"], correct: [], secs: 20, shown: [2, 0, 3, 1] },
 	{ text: "Wie viele Beine hat eine Spinne?", options: ["6", "8", "10"], correct: [1], secs: 12 },
 ];
 const INTRO_MS = 4000;
+const seqOf = (q: SimQ) => q.options.map((_, k) => q.shown!.indexOf(k));
 
-interface P { id: string; nick: string; avatar: AvatarSpec; score: number; prevRank: number; streak: number; lastPoints: number; lastCorrect: boolean; correctTotal: number; answered: boolean; skill: number; choice: number; ms: number; }
+interface P { id: string; nick: string; avatar: AvatarSpec; score: number; prevRank: number; streak: number; lastPoints: number; lastCorrect: boolean; correctTotal: number; answered: boolean; skill: number; choice: number; ms: number; num: number | null; right: boolean; }
 
 export class PreviewSim {
 	private r = rng(42);
@@ -42,6 +49,7 @@ export class PreviewSim {
 		this.players.push({
 			id: "p" + i, nick: NAMES[i % NAMES.length], avatar: { ...randomAvatar(), aid: this.r() < 0.15 ? 1 : 0 },
 			score: 0, prevRank: i + 1, streak: 0, lastPoints: 0, lastCorrect: false, correctTotal: 0, answered: false, skill: 0.35 + this.r() * 0.6, choice: -1, ms: 0,
+			num: null, right: false,
 		});
 	}
 	stop() { this.clearTimers(); clearInterval(this.joinTimer); }
@@ -51,6 +59,11 @@ export class PreviewSim {
 		switch (method) {
 			case "HostNext": this.next(); break;
 			case "HostFinish": this.go("podium"); break;
+			case "HostSkip": {
+				const to = this.q + (this.phase === "scoreboard" ? 2 : 1);
+				if (to >= QUESTIONS.length) this.go("podium"); else { this.q = to; this.go("intro"); }
+				break;
+			}
 			case "HostKick": this.players = this.players.filter(p => p.id !== args[0]); this.send(); break;
 			case "HostDirectStart": return "In der Vorschau nicht verfügbar.";
 		}
@@ -89,10 +102,9 @@ export class PreviewSim {
 			this.dist = qd.options.map(() => 0);
 			for (const p of this.players) {
 				p.answered = false;
-				const right = this.r() < p.skill;
-				p.choice = right ? qd.correct[Math.floor(this.r() * qd.correct.length)] : this.wrongOf(qd);
+				this.pick(p, qd);
 				p.ms = 1500 + this.r() * (total - 2500);
-				this.later(p.ms, () => { p.answered = true; this.dist[p.choice]++; this.send(); if (this.players.every(x => x.answered)) this.later(600, () => this.go("reveal")); });
+				this.later(p.ms, () => { p.answered = true; if (p.choice >= 0) this.dist[p.choice]++; this.send(); if (this.players.every(x => x.answered)) this.later(600, () => this.go("reveal")); });
 			}
 			this.later(total, () => this.go("reveal"));
 		}
@@ -100,16 +112,29 @@ export class PreviewSim {
 		this.send();
 	}
 
-	private wrongOf(q: (typeof QUESTIONS)[number]) {
+	/** simulierte Antwort je nach Fragetyp (Treffer abhängig vom „Können“) */
+	private pick(p: P, q: SimQ) {
+		const right = this.r() < p.skill;
+		p.right = right; p.choice = -1; p.num = null;
+		if (q.kind === "estimate") p.num = Math.round(q.value! + (right ? 1 : 4) * (this.r() * 2 - 1) * (q.tol || 5) * (right ? 0.9 : 1));
+		else if (q.kind !== "order") p.choice = right ? q.correct[Math.floor(this.r() * q.correct.length)] : this.wrongOf(q);
+	}
+	private hit(p: P, q: SimQ) {
+		if (!p.answered) return false;
+		if (q.kind === "estimate") return p.num != null && Math.abs(p.num - q.value!) <= (q.tol ?? 0);
+		if (q.kind === "order") return p.right;
+		return q.correct.includes(p.choice);
+	}
+	private wrongOf(q: SimQ) {
 		const wrong = q.options.map((_, i) => i).filter(i => !q.correct.includes(i));
 		return wrong[Math.floor(this.r() * wrong.length)];
 	}
 	private ranked() { return [...this.players].sort((a, b) => b.score - a.score); }
-	private score(q: (typeof QUESTIONS)[number]) {
+	private score(q: SimQ) {
 		const before = this.ranked(); before.forEach((p, i) => { p.prevRank = i + 1; });
 		const answered = this.players.filter(p => p.answered);
 		for (const p of this.players) {
-			const ok = p.answered && q.correct.includes(p.choice);
+			const ok = this.hit(p, q);
 			p.lastCorrect = ok; p.lastPoints = ok ? Math.round(1000 * (1 - p.ms / (q.secs * 1000) / 2)) : 0;
 			p.score += p.lastPoints; p.streak = ok ? p.streak + 1 : 0; if (ok) p.correctTotal++;
 		}
@@ -123,7 +148,7 @@ export class PreviewSim {
 			this.dist = q.options.map(() => 0);
 			for (const p of this.players) {
 				p.answered = true; p.ms = 1500 + this.r() * (q.secs * 1000 - 2500);
-				p.choice = this.r() < p.skill ? q.correct[0] : this.wrongOf(q); this.dist[p.choice]++;
+				this.pick(p, q); if (p.choice >= 0) this.dist[p.choice]++;
 			}
 			this.q = qi; this.score(q);
 		}
@@ -137,29 +162,51 @@ export class PreviewSim {
 			streak: p.streak, lastPoints: p.lastPoints, lastCorrect: p.lastCorrect, correctTotal: p.correctTotal, answered: this.phase === "answering" && p.answered,
 		}));
 		const reveal = this.phase === "reveal";
+		const kind = qd.kind ?? "choice";
+		const shown = kind === "order" ? qd.shown!.map(i => qd.options[i]) : qd.options;
 		const question: HostQuestion = {
-			text: qd.text, timeLimit: qd.secs, multi: qd.correct.length > 1, correctCount: qd.correct.length, points: 1,
-			options: qd.options.map((t, i) => ({ text: t, correct: reveal ? qd.correct.includes(i) : null })),
+			text: qd.text, kind, timeLimit: qd.secs, multi: kind === "choice" && qd.correct.length > 1, correctCount: qd.correct.length, points: 1,
+			options: shown.map((t, i) => ({ text: t, correct: reveal && kind === "choice" ? qd.correct.includes(i) : null })),
+			unit: qd.unit ?? "", tolerance: qd.tol ?? 0, notes: qd.notes ?? "",
+			correctOrder: reveal && kind === "order" ? seqOf(qd) : null,
+			correctValue: reveal && kind === "estimate" ? qd.value : null,
+			explanation: reveal ? qd.explanation ?? "" : "",
 		};
 		const h = this.history[this.q];
 		const answered = this.players.filter(p => p.answered).length;
 		const join = location.origin + location.pathname + "#/join/123456";
+		const nq = QUESTIONS[this.q + 1];
 		this.emit({
 			role: "host", pin: "123456", joinUrl: join, quizTitle: "Vorschau", phase: this.phase, version: this.version,
 			questionIndex: this.q, questionCount: QUESTIONS.length, isLast: this.q >= QUESTIONS.length - 1,
 			remainingMs: Math.max(0, this.deadline - performance.now()),
 			question: ["intro", "answering", "reveal"].includes(this.phase) ? question : null,
 			answeredCount: answered, connectedCount: this.players.length,
-			distribution: reveal ? (h?.dist ?? this.dist) : null, correctCount: reveal ? (h?.correct ?? 0) : 0, avgMs: h?.avgMs ?? 0,
+			distribution: reveal && kind === "choice" ? (h?.dist ?? this.dist) : null, correctCount: reveal ? (h?.correct ?? 0) : 0, avgMs: h?.avgMs ?? 0,
+			estimate: reveal && kind === "estimate" ? this.estimate(qd) : null,
+			next: nq ? { text: nq.text, kind: nq.kind ?? "choice" } : null,
 			players,
 			stats: this.phase === "final" ? {
 				questions: QUESTIONS.map((q, i) => ({
-					text: q.text, options: q.options.map((t, j) => ({ text: t, correct: q.correct.includes(j) })),
-					distribution: this.history[i]?.dist ?? q.options.map(() => 0), answered: this.players.length,
+					text: q.text, kind: q.kind ?? "choice", options: q.options.map((t, j) => ({ text: t, correct: q.kind === "order" || q.correct.includes(j) })),
+					distribution: q.kind ? [] : this.history[i]?.dist ?? q.options.map(() => 0), answered: this.players.length,
 					correct: this.history[i]?.correct ?? 0, players: this.players.length, avgMs: this.history[i]?.avgMs ?? 0,
+					correctValue: q.value ?? null, tolerance: q.tol ?? 0, unit: q.unit ?? "", median: q.value ?? null,
 				})),
 			} : null,
 			hasQuiz: true, direct: null,
 		});
+	}
+
+	private estimate(q: SimQ): EstimateStats {
+		const est = this.players.filter(p => p.answered && p.num != null);
+		const v = est.map(p => p.num!).sort((a, b) => a - b);
+		const n = v.length;
+		return {
+			n, values: v, within: est.filter(p => Math.abs(p.num! - q.value!) <= (q.tol ?? 0)).length,
+			mean: n ? v.reduce((a, b) => a + b, 0) / n : null, median: n ? (n % 2 ? v[(n - 1) / 2] : (v[n / 2 - 1] + v[n / 2]) / 2) : null,
+			min: n ? v[0] : null, max: n ? v[n - 1] : null,
+			closest: [...est].sort((a, b) => Math.abs(a.num! - q.value!) - Math.abs(b.num! - q.value!)).slice(0, 3).map(p => ({ nick: p.nick, value: p.num! })),
+		};
 	}
 }

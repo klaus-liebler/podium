@@ -1,8 +1,9 @@
 // Textfeld mit Formatierungsleiste (Markdown) und Live-Vorschau – für Frage- und Antworttexte im Quiz-Editor.
 import { html, nothing, svg } from "lit";
 import { customElement, property, query, state } from "lit/decorators.js";
-import { LightElement } from "../core/util.ts";
+import { LightElement, toast } from "../core/util.ts";
 import { hasMarkup, md } from "../core/markdown.ts";
+import { api } from "../core/session.ts";
 
 const ico = (p: ReturnType<typeof svg>) => html`<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${p}</svg>`;
 
@@ -21,7 +22,16 @@ const TOOLS: (Tool | null)[] = [
 	null,
 	{ id: "table", title: "Tabelle", label: ico(svg`<rect x="3" y="4" width="18" height="16" rx="1.5"/><path d="M3 9.5h18M3 15h18M9 4v16M15 4v16"/>`) },
 	{ id: "math", title: "Formel (LaTeX)", label: ico(svg`<rect x="3" y="3" width="18" height="18" rx="3"/><path d="M7 9h4M9 7v4M13.5 8.5h4M7.5 14.5l3 3M10.5 14.5l-3 3M13.5 15h4M13.5 17.5h4"/>`) },
+	{ id: "image", title: "Bild einfügen (auch per Strg+V oder Hineinziehen)", label: ico(svg`<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9.5" r="1.8"/><path d="m21 16-5.5-5.5L5 20"/>`) },
 ];
+
+/** Bild hochladen (PNG/JPEG/GIF/WebP bis 5 MB) und den Markdown-Verweis liefern */
+async function uploadImage(file: File): Promise<string> {
+	const fd = new FormData(); fd.append("file", file);
+	const d = await api<{ url: string }>("media", { method: "POST", body: fd });
+	const alt = file.name && !/^image\.\w+$/i.test(file.name) ? file.name.replace(/\.[^.]+$/, "").replace(/[[\]]/g, "") : "";
+	return `![${alt}](${d.url})`;
+}
 
 const HELP: [string, string][] = [
 	["**fett**", "Strg+B"], ["*kursiv*", "Strg+I"], ["~~durchgestrichen~~", ""], ["`Code`", ""],
@@ -30,6 +40,7 @@ const HELP: [string, string][] = [
 	["$a^2+b^2=c^2$", "Formel im Text"], ["$$\\frac{U}{R}$$", "abgesetzte Formel"],
 	["$\\alpha, \\sqrt{x}, x_1, \\le, \\cdot$", "griechisch, Wurzel, Index, Operatoren"],
 	["```\nCode-Block\n```", "Codeblock"],
+	["![Beschreibung](api/media/…)", "Bild – über den Bild-Knopf, Strg+V oder Hineinziehen"],
 ];
 
 @customElement("md-input")
@@ -40,7 +51,10 @@ export class MdInput extends LightElement {
 	@property({ type: Number }) rows = 2;
 	/** wird bei jeder Änderung mit dem neuen Text aufgerufen */
 	@property({ attribute: false }) onValue: (v: string) => void = () => { };
+	/** optional: Enter (ohne Umschalt) abfangen – z. B. „nächste Antwort“ im Editor; Umschalt+Enter = neue Zeile */
+	@property({ attribute: false }) onEnter: (() => void) | null = null;
 	@state() private help = false;
+	@state() private uploading = false;
 	@query("textarea") private ta!: HTMLTextAreaElement;
 
 	protected override updated() { this.grow(); }
@@ -117,10 +131,41 @@ export class MdInput extends LightElement {
 				return this.block(tpl, 2, 10);
 			}
 			case "math": return sel.includes("\n") ? this.block("$$\n" + sel + "\n$$", 3, 3 + sel.length) : this.wrap("$", "$", "x^2");
+			case "image": {
+				const inp = Object.assign(document.createElement("input"), { type: "file", accept: "image/png,image/jpeg,image/gif,image/webp" });
+				inp.onchange = () => { if (inp.files?.[0]) void this.addImages([inp.files[0]]); };
+				inp.click();
+				return;
+			}
 		}
 	}
 
+	/** Bilder hochladen und an der Einfügemarke einsetzen */
+	private async addImages(files: File[]) {
+		const imgs = files.filter(f => /^image\/(png|jpeg|gif|webp)$/.test(f.type));
+		if (!imgs.length) { if (files.length) toast("Nur PNG, JPEG, GIF oder WebP.", 3500, "err"); return; }
+		this.uploading = true;
+		try {
+			for (const f of imgs) {
+				const ref = await uploadImage(f);
+				this.insert(ref);
+			}
+		} catch (e) { toast((e as Error).message, 4000, "err"); }
+		finally { this.uploading = false; }
+	}
+	private paste(e: ClipboardEvent) {
+		const files = [...(e.clipboardData?.files ?? [])];
+		if (files.some(f => f.type.startsWith("image/"))) { e.preventDefault(); void this.addImages(files); }
+	}
+	private drop(e: DragEvent) {
+		const files = [...(e.dataTransfer?.files ?? [])];
+		if (files.length) { e.preventDefault(); e.stopPropagation(); this.ta.focus(); void this.addImages(files); }
+	}
+
 	private key(e: KeyboardEvent) {
+		if (e.key === "Enter" && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey && this.onEnter && !e.isComposing) {
+			e.preventDefault(); this.onEnter(); return;
+		}
 		if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
 		const id = ({ b: "bold", i: "italic", k: "link" } as Record<string, string>)[e.key.toLowerCase()];
 		if (id) { e.preventDefault(); this.tool(id); }
@@ -131,7 +176,10 @@ export class MdInput extends LightElement {
 		return html`
 			<div class="md-wrap">
 				<textarea rows=${this.rows} maxlength=${this.maxlength} placeholder=${this.placeholder} .value=${this.value}
-					@input=${() => this.changed()} @keydown=${(e: KeyboardEvent) => this.key(e)}></textarea>
+					@input=${() => this.changed()} @keydown=${(e: KeyboardEvent) => this.key(e)}
+					@paste=${(e: ClipboardEvent) => this.paste(e)} @dragover=${(e: DragEvent) => { if (e.dataTransfer?.types.includes("Files")) e.preventDefault(); }}
+					@drop=${(e: DragEvent) => this.drop(e)}></textarea>
+				${this.uploading ? html`<span class="md-uploading" role="status">Bild wird hochgeladen …</span>` : nothing}
 				<div class="md-bar" role="toolbar" aria-label="Formatierung" @mousedown=${(e: Event) => e.preventDefault()}>
 					${TOOLS.map(t => t ? html`<button type="button" title=${t.title} aria-label=${t.title} @click=${() => this.tool(t.id)}>${t.label}</button>` : html`<span class="sep"></span>`)}
 					<span class="spacer"></span>

@@ -87,7 +87,20 @@ internal static partial class QuizImport
                 if (q.TryGetProperty("options", out var opts))
                 {
                     var o = opts.EnumerateArray().Select(x => new OptionDto(CleanMd(Str(x, "text"), 300), x.TryGetProperty("isCorrect", out var c) && c.ValueKind == JsonValueKind.True)).ToList();
-                    Add(questions, warnings, n, CleanMd(Str(q, "text"), 1000), o, Num(q, "timeLimitSeconds") ?? 20, (int)(Num(q, "pointsMultiplier") ?? 1));
+                    var kind = Podium.Data.QuestionKinds.Norm(Str(q, "kind"));
+                    var text = CleanMd(Str(q, "text"), 1000);
+                    var extra = new { Explanation = CleanMd(Str(q, "explanation"), 2000), Notes = CleanMd(Str(q, "notes"), 2000) };
+                    if (kind == Podium.Data.QuestionKinds.Choice)
+                    {
+                        var before = questions.Count;
+                        Add(questions, warnings, n, text, o, Num(q, "timeLimitSeconds") ?? 20, (int)(Num(q, "pointsMultiplier") ?? 1));
+                        if (questions.Count > before) questions[^1] = questions[^1] with { Explanation = extra.Explanation, Notes = extra.Notes };
+                        continue;
+                    }
+                    var dto = new QuestionDto(text, SnapTime(Num(q, "timeLimitSeconds") ?? 20), Math.Clamp((int)(Num(q, "pointsMultiplier") ?? 1), 0, 2),
+                        o.Where(x => x.Text.Length > 0).Take(6).ToList(), kind, extra.Explanation, extra.Notes, Num(q, "correctValue"), Num(q, "tolerance"), Clean(Str(q, "unit") ?? "", 12));
+                    if (dto.Validate(n) is { } err) warnings.Add(err + " – übersprungen.");
+                    else questions.Add(dto);
                     continue;
                 }
                 // Kahoot

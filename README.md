@@ -22,11 +22,22 @@ nur mit einem selbst gewählten Spitznamen mit.
   oder ein Wort für die Word Cloud. Die Antworten sind anonym und erscheinen auf Wunsch live.
 - 🏆 **Punkte für Tempo und Serien:** Wer schnell und richtig antwortet, sammelt mehr Punkte. Zwischenstände halten
   die Spannung hoch, am Ende gibt es eine Statistik zu jeder Frage.
+- 🧩 **Drei Fragetypen:** Auswahl (auch Wahr/Falsch und mehrere richtige Antworten), Schätzfrage mit Toleranz und
+  Reihenfolge. Fragen können Bilder, Formeln (LaTeX), Code und eine Erklärung zur Lösung enthalten.
+- 📱 **Fernbedienung:** Die Leinwand lässt sich vom eigenen Handy aus steuern. Dort stehen auch die richtige Antwort,
+  eigene Notizen und die nächste Frage.
+- 🎯 **Flexibel in der Vorlesung:** Nur ausgewählte Fragen spielen, Fragen spontan überspringen, Räume vorab vorbereiten
+  (PIN und QR-Code für die Folien) und feste Kurs-PINs je Ordner.
+- 📊 **Auswertung danach:** Jede Runde lässt sich nachträglich ansehen, mit den schwierigsten Fragen auf einen Blick
+  und Export als CSV oder PDF.
+- ✍️ **Komfortabler Editor:** Automatisches Speichern, Umsortieren per Ziehen, Einstellungen für alle Fragen auf einmal,
+  Fragen aus anderen Quizzen übernehmen. Auf Wunsch schlägt Claude Fragen aus einem Text oder PDF vor, mit dem eigenen
+  API-Schlüssel.
 - 📥 **Vorhandene Quizze übernehmen:** Import per Kahoot-Link, Kahoot-Tabellenvorlage (.xlsx), CSV oder JSON. Export
   als JSON.
-- 🗂️ **Ordnung für viele Kurse:** Quizze in Ordnern, Editor mit 2 bis 6 Antworten je Frage, Zeitlimit und doppelten
-  Punkten.
-- 👥 **Für das ganze Kollegium:** Eigene Konten mit Einladungslinks, jede Person sieht nur ihre eigenen Quizze.
+- 🗂️ **Ordnung für viele Kurse:** Ordner, Suche, Sortierung, Papierkorb sowie 3D-Welt und Musik je Quiz.
+- 👥 **Für das ganze Kollegium:** Eigene Konten mit Einladungslinks, jede Person sieht nur ihre eigenen Quizze. Quizze
+  lassen sich per Link teilen, die Empfänger·innen bekommen dann eine eigene Kopie.
 - 👀 **Szenen-Vorschau:** Jede Welt lässt sich mit 20 simulierten Teilnehmenden ansehen, bevor es ernst wird.
 
 ### So läuft eine Runde
@@ -94,6 +105,9 @@ Entwicklung mit Hot-Reload: Backend per `dotnet run` starten, dann `cd web; npm 
 | `web/src/three/themes/` | 3D-Welten: Gameshow-Studio, Campus-Insel, Weltraum-Arena, Stadion, Apfelwiese, Osnabrück, Ruhige Bühne (ohne Bewegung und Effekte, für alle, die es ruhiger mögen) |
 | `Music/MusicApi.cs`, `web/src/views/music-view.ts` | Musikmanager: Musik je Abschnitt (Warteraum, Fragestellung, Lösung & Statistik, Siegerehrung) pro Konto, eigene Uploads (`musik/` neben der Datenbank, Pfad per `MusicPath`) |
 | `web/src/views/preview-sim.ts` | Szenen-Vorschau für Admins: spielt eine Runde mit 20 Beispielteilnehmenden lokal durch |
+| `Teaching/TeachingApi.cs` | Bilder in Fragen (`bilder/` neben der Datenbank, Pfad per `MediaPath`), Papierkorb, Teilen per Link, Direktfragen-Vorlagen, Auswertung gespielter Runden (inkl. CSV), offene Räume und Fernbedienung, Kurs-PINs |
+| `Teaching/AiApi.cs` | KI-Vorschläge (Claude) aus Text oder PDF; Schlüssel je Konto unter „Mein Konto“ (verschlüsselt), optional ein Server-Schlüssel `Ai__ApiKey` |
+| `web/src/views/remote-view.ts`, `session-view.ts`, `shared-view.ts` | Fernbedienung, Auswertung einer Runde, geteiltes Quiz |
 | `deploy/` | Bereitstellung auf liebler.iui.hs-osnabrueck.de (systemd, nginx-Schema `liebler.d/`, Sicherung) |
 
 ## Anmeldung
@@ -107,7 +121,9 @@ Betrieb unter einem Unterpfad: `PathBase=/podium`, `PublicBaseUrl=https://…/po
 
 ## Routen (Hash)
 
-`#/` Dozentenbereich · `#/edit/<id>` Editor · `#/host/<pin>/<key>` Leinwand · `#/join/<pin>` Handy · `#/ask/<pin>` anonyme Live-Fragerunde · `#/music` Musikmanager · `#/preview/<welt>` Szenen-Vorschau (Admin) · `#/login` · `#/invite/<token>` · `#/account` · `#/users`
+`#/` Dozentenbereich · `#/folder/<id>` Ordner · `#/trash` Papierkorb · `#/edit/<id>` Editor · `#/host/<pin>/<key>` Leinwand · `#/remote/<pin>` Fernbedienung (mit Anmeldung) · `#/join/<pin>` Handy · `#/ask/<pin>` anonyme Live-Fragerunde · `#/session/<id>` Auswertung · `#/shared/<token>` geteiltes Quiz · `#/music` Musikmanager · `#/music/quiz/<id>` Musik je Quiz · `#/preview/<welt>` Szenen-Vorschau (Admin) · `#/login` · `#/invite/<token>` · `#/account` · `#/users`
+
+Editor: Strg+S speichert, Enter in einer Antwort springt zur nächsten (Umschalt+Enter = neue Zeile), Bilder per Strg+V oder Hineinziehen.
 
 ## Leinwand-Tastatur
 
