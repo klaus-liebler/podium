@@ -111,6 +111,17 @@ public static class Saml
                             kd.EncryptionMethods.Add(new EncryptionMethod { Algorithm = new Uri(alg) });
                     }
             };
+            // Zwischen-Cookie klein halten: Sustainsys legt sonst alle Attribute samt Session-Index, Logout-NameID und
+            // AuthnContext ab – mehrere Set-Cookie-Teile, zusammen größer als nginx' Header-Puffer ("upstream sent too big
+            // header" → 502 am ACS). Gebraucht werden nur die Attribute, die /auth/saml/fertig auswertet.
+            o.Notifications.AcsCommandResultCreated = (result, _) =>
+            {
+                if (result.Principal?.Identity is not ClaimsIdentity src) return;
+                var keep = new HashSet<string> { AttrSubjectId, AttrPairwiseId, AttrEppn, AttrAffiliation, AttrDisplayName, AttrGivenName, AttrSurname, AttrMail };
+                var slim = new ClaimsIdentity(src.AuthenticationType);
+                slim.AddClaims(src.Claims.Where(c => keep.Contains(c.Type)).Select(c => new Claim(c.Type, c.Value)));
+                result.Principal = new ClaimsPrincipal(slim);
+            };
             // IdP-Metadaten werden erst beim ersten Login geladen (EnsureIdp) – ist der IdP gerade nicht erreichbar,
             // bleiben die eigenen Metadaten trotzdem abrufbar.
         });
