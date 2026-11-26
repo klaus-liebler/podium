@@ -2,6 +2,7 @@
 // vorbereiteter Raum), offene Räume (Leinwand, Fernbedienung, QR-Code für die Folien), Teilen, Papierkorb, letzte Runden.
 import { html, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
+import { keyed } from "lit/directives/keyed.js";
 import { LightElement, fmtDate, store, toast } from "../core/util.ts";
 import type { OpenRoom, QuizDto, QuizFolder, QuizSummary, SessionSummary } from "../core/types.ts";
 import { ApiError, api, getMe, teacherHeader, type Me } from "../core/session.ts";
@@ -194,10 +195,12 @@ export class TeacherHome extends LightElement {
 	}
 	private moveSelect(q: QuizSummary) {
 		if (!this.folders.length) return nothing;
-		return html`<select class="move" title="In Ordner verschieben (oder Zeile auf einen Ordner ziehen)" @change=${(e: Event) => this.moveTo(q.id, Number((e.target as HTMLSelectElement).value) || null)}>
+		// keyed: Zeilen werden nach Position wiederverwendet – ohne neuen Schlüssel behielte das <select> den zuletzt gewählten
+		// Wert, und nach dem Verschieben stünde der Zielordner beim Quiz, das in diese Zeile nachrückt (oder nach einem Fehler)
+		return keyed(`${q.id}:${q.folderId ?? 0}`, html`<select class="move" title="In Ordner verschieben (oder Zeile auf einen Ordner ziehen)" @change=${(e: Event) => this.moveTo(q.id, Number((e.target as HTMLSelectElement).value) || null)}>
 			<option value="0" ?selected=${!q.folderId}>— ohne Ordner —</option>
 			${this.folders.map(f => html`<option value=${f.id} ?selected=${q.folderId === f.id}>📁 ${f.name}</option>`)}
-		</select>`;
+		</select>`);
 	}
 	/** Ablageziel beim Ziehen einer Quiz-Zeile (0 = ohne Ordner) */
 	private dropZone(target: number) {
