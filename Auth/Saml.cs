@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Podium.Data;
@@ -30,6 +31,8 @@ public static class Saml
 {
     public const string Scheme = Saml2Defaults.Scheme;          // "Saml2" – zugleich der Pfad der Metadaten
     const string ExternScheme = "saml-extern";                  // kurzlebiges Zwischen-Cookie bis zur Kontozuordnung
+    /// <summary>Anbieter der Identity-Verknüpfung (UserLogins); Schlüssel = dauerhafte Hochschulkennung wie bisher in User.SsoId</summary>
+    public const string LoginProvider = "SAML";
     const string LinkItem = "podium.link";
 
     // SAML-Attributnamen (urn:oid-Form, wie Shibboleth sie ausliefert)
@@ -42,7 +45,7 @@ public static class Saml
     const string AttrSurname = "urn:oid:2.5.4.4";
     const string AttrMail = "urn:oid:0.9.2342.19200300.100.1.3";
 
-    public static bool Enabled(IConfiguration cfg) => !string.IsNullOrWhiteSpace(cfg["Saml:IdpEntityId"]);
+    public static bool Enabled(IConfiguration cfg) => new Anmeldeangebot(cfg).Hat(Verfahren.Saml);
 
     public static void AddPodiumSaml(this AuthenticationBuilder auth, IConfiguration cfg, string keysDir)
     {
@@ -117,7 +120,8 @@ public static class Saml
             o.Notifications.AcsCommandResultCreated = (result, _) =>
             {
                 if (result.Principal?.Identity is not ClaimsIdentity src) return;
-                var keep = new HashSet<string> { AttrSubjectId, AttrPairwiseId, AttrEppn, AttrAffiliation, AttrDisplayName, AttrGivenName, AttrSurname, AttrMail };
+                // plus Authentifizierungskontext (REFEDS-MFA) – betrifft nur dieses Cookie, nicht die Metadaten
+                var keep = new HashSet<string> { AttrSubjectId, AttrPairwiseId, AttrEppn, AttrAffiliation, AttrDisplayName, AttrGivenName, AttrSurname, AttrMail, ClaimTypes.AuthenticationMethod };
                 var slim = new ClaimsIdentity(src.AuthenticationType);
                 slim.AddClaims(src.Claims.Where(c => keep.Contains(c.Type)).Select(c => new Claim(c.Type, c.Value)));
                 result.Principal = new ClaimsPrincipal(slim);
@@ -181,14 +185,14 @@ public static class Saml
         {
             if (await EnsureIdp(opts.Get(Scheme), cfg, log) is { } err) return Back(ctx, err);
             var props = new AuthenticationProperties { RedirectUri = ctx.Request.PathBase + "/api/auth/saml/fertig" };
-            if (link == true && (await ctx.AuthenticateAsync(CookieAuthenticationDefaults.AuthenticationScheme)).Principal is { } p
+            if (link == true && (await ctx.AuthenticateAsync(IdentityConstants.ApplicationScheme)).Principal is { } p
                 && p.FindFirstValue(ClaimTypes.NameIdentifier) is { } uid)
                 props.Items[LinkItem] = uid;
             return Results.Challenge(props, [Scheme]);
         });
 
         // Rückkehr vom IdP: Berechtigung prüfen, Konto finden/anlegen/verknüpfen, Podium-Sitzung starten
-        api.MapGet("/auth/saml/fertig", async (HttpContext ctx, AppDb db, ILogger<Saml2Options> log) =>
+        api.MapGet("/auth/saml/fertig", async (HttpContext ctx, AppDb db, ILogger<Saml2Options> log, UserManager<User> um, Anmeldeabschluss abschluss) =>
         {
             var ext = await ctx.AuthenticateAsync(ExternScheme);
             await ctx.SignOutAsync(ExternScheme);
@@ -214,26 +218,37 @@ public static class Saml
             var fullName = string.Join(" ", new[] { Get(AttrGivenName), Get(AttrSurname) }.Where(x => x != null));
             var name = Get(AttrDisplayName) ?? (fullName.Length > 0 ? fullName : mail ?? subject);
 
-            var user = await db.Users.FirstOrDefaultAsync(u => u.SsoId == subject);
+            // Dieselbe Kennung wie bisher (subject-id/pairwise-id/eppn); die Aufwertung hat die alte SsoId in die Verknüpfungen übernommen
+            var user = await um.FindByLoginAsync(LoginProvider, subject);
             if (user == null && ext.Properties?.Items.TryGetValue(LinkItem, out var linkId) == true && int.TryParse(linkId, out var lid))
             {
                 user = await db.Users.FirstOrDefaultAsync(u => u.Id == lid && u.SsoId == null);
-                if (user != null) { user.SsoId = subject; log.LogInformation("Konto \"{User}\" mit Hochschulkennung {Subject} verknüpft.", user.UserName, subject); }
+                if (user != null)
+                {
+                    await um.AddLoginAsync(user, new UserLoginInfo(LoginProvider, subject, "Hochschulkennung"));
+                    log.LogInformation("Konto \"{User}\" mit Hochschulkennung {Subject} verknüpft.", user.UserName, subject);
+                }
             }
             if (user == null)
             {
-                user = new User { SsoId = subject, UserName = await FreeUserName(db, subject, mail), DisplayName = name };
+                user = new User { UserName = await FreeUserName(db, subject, mail), DisplayName = name };
                 db.Users.Add(user);
+                await db.SaveChangesAsync();
+                await um.AddLoginAsync(user, new UserLoginInfo(LoginProvider, subject, "Hochschulkennung"));
+                Seed.EnsureDemo(db, user.Id);
                 log.LogInformation("Hochschul-Login: neues Konto \"{User}\" für {Subject} angelegt.", user.UserName, subject);
             }
             if (!user.Active) return Back(ctx, "Dieses Konto ist deaktiviert. Bitte an die Administration wenden.");
             user.Email = mail;
-            user.LastLoginUtc = DateTime.UtcNow;
-            var isNew = user.Id == 0;
             await db.SaveChangesAsync();
-            if (isNew) Seed.EnsureDemo(db, user.Id);
-            await AuthApi.SignIn(ctx, user);
-            return Results.Redirect(ctx.Request.PathBase + "/#/");
+            // Admins: zweiter Faktor vom IdP (REFEDS-MFA) oder eigener TOTP-Schritt in Podium
+            var mfa = p.FindAll(ClaimTypes.AuthenticationMethod).Any(c => c.Value.Trim() == Extern.RefedsMfa);
+            return await abschluss.AbschliessenAsync(ctx, user, "SAML", mfa) switch
+            {
+                Anmeldeabschluss.Ergebnis.Angemeldet => Results.Redirect(ctx.Request.PathBase + "/#/"),
+                Anmeldeabschluss.Ergebnis.ZweiterFaktor => Results.Redirect(ctx.Request.PathBase + "/#/login?zweiterfaktor=1"),
+                _ => Back(ctx, "Dieses Konto ist nach zu vielen Fehlversuchen vorübergehend gesperrt. Bitte später erneut versuchen."),
+            };
         });
     }
 

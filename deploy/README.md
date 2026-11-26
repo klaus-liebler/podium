@@ -35,7 +35,8 @@ erneuter VibeVHS-Schritt 03 sie wieder.
 
 **Erstes Admin-Konto:** Kein Passwort in `podium.env`. Solange die Datenbank kein Konto enthält, zeigt
 `https://liebler.iui.hs-osnabrueck.de/podium/` die **Ersteinrichtung** – dort einmalig Benutzername und Passwort des
-Admin-Kontos festlegen (wie bei evcc). Danach ist die Ersteinrichtung gesperrt. Weil bis dahin jede·r mit Zugang zur Seite
+Admin-Kontos festlegen (wie bei evcc) und gleich danach den zweiten Faktor mit einer Authenticator-App einrichten (Pflicht für
+Admins; Wiederherstellungscodes sicher ablegen). Danach ist die Ersteinrichtung gesperrt. Weil bis dahin jede·r mit Zugang zur Seite
 das Konto anlegen könnte: **direkt nach dem ersten Ausrollen** erledigen (`ausrollen.sh` erinnert daran).
 
 ## 3 · Ausrollen (jetzt und bei jedem Update)
@@ -72,7 +73,7 @@ Datenbank liegt nur ihr SHA-256.
 | Was | Ziel in `/var/backups/podium` | Aufbewahrung |
 |---|---|---|
 | Datenbank | `podium-<datum>-<zeit>.db` (Online-Sicherung, Integritätsprüfung) | **14 Tage**, ältere werden gelöscht |
-| Schlüssel (Cookies, SAML-Zertifikat) | `schluessel/` | nur der aktuelle Stand |
+| Schlüssel (Cookies, TOTP-Geheimnisse, SAML-Zertifikat) | `schluessel/` | nur der aktuelle Stand – ohne ihn müssen alle den zweiten Faktor neu einrichten |
 | Musik | `musik/` (fortlaufender Spiegel) | **unbegrenzt** – neue Dateien kommen dazu, auf dem Server gelöschte bleiben im Spiegel |
 | Bilder in Fragen | `bilder/` (fortlaufender Spiegel) | **unbegrenzt**, wie Musik |
 

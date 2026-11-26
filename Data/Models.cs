@@ -22,6 +22,51 @@ public class User
     public string? Email { get; set; }
     /// <summary>Eigener Claude-API-Schlüssel für KI-Vorschläge – verschlüsselt (Data Protection), nie im Klartext ausgeliefert</summary>
     public string? AiKeyProtected { get; set; }
+
+    // ---- ASP.NET Core Identity (siehe Auth/Identity.cs)
+    /// <summary>Sicherheitsstempel: steht im Anmelde-Cookie; ändert er sich (Passwort, Admin-Recht, zweiter Faktor …), enden alle Sitzungen</summary>
+    public string SecurityStamp { get; set; } = NewStamp();
+    /// <summary>Fehlversuche in Folge (Passwort oder Code); nach zu vielen ist das Konto bis LockoutEndUtc gesperrt</summary>
+    public int AccessFailedCount { get; set; }
+    public DateTime? LockoutEndUtc { get; set; }
+    /// <summary>Zweiter Faktor (TOTP, Authenticator-App) eingerichtet – Pflicht für Admins</summary>
+    public bool TwoFactorEnabled { get; set; }
+    /// <summary>TOTP-Geheimnis, verschlüsselt (Data Protection)</summary>
+    public string? AuthenticatorKeyProtected { get; set; }
+    /// <summary>SHA-256 der noch gültigen Wiederherstellungscodes, durch „;“ getrennt</summary>
+    public string? RecoveryCodes { get; set; }
+
+    public static string NewStamp() => Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(16));
+}
+
+/// <summary>Verknüpfung eines Kontos mit einem Identitätsdienst (Identity-„Login“): SAML = dauerhafte Hochschulkennung wie bisher in User.SsoId, OIDC = „sub“.</summary>
+public class UserLogin
+{
+    public int Id { get; set; }
+    public int UserId { get; set; }
+    /// <summary>"SAML" oder "OIDC"</summary>
+    public string Provider { get; set; } = "";
+    public string ProviderKey { get; set; } = "";
+    public string DisplayName { get; set; } = "";
+    public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>Passkey (WebAuthn) eines Kontos – nur öffentliche Daten.</summary>
+public class UserPasskey
+{
+    public int Id { get; set; }
+    public int UserId { get; set; }
+    public byte[] CredentialId { get; set; } = [];
+    public byte[] PublicKey { get; set; } = [];
+    public string Name { get; set; } = "";
+    public DateTime CreatedUtc { get; set; }
+    public long SignCount { get; set; }
+    public string Transports { get; set; } = "";
+    public bool IsUserVerified { get; set; }
+    public bool IsBackupEligible { get; set; }
+    public bool IsBackedUp { get; set; }
+    public byte[] AttestationObject { get; set; } = [];
+    public byte[] ClientDataJson { get; set; } = [];
 }
 
 /// <summary>Eigenes, hochgeladenes Musikstück eines Kontos. Datei liegt unter StoredName im Musikordner.</summary>
@@ -205,6 +250,8 @@ public class AppDb(DbContextOptions<AppDb> options) : DbContext(options)
     public DbSet<MusicUpload> MusicUploads => Set<MusicUpload>();
     public DbSet<DirectTemplate> DirectTemplates => Set<DirectTemplate>();
     public DbSet<MediaFile> MediaFiles => Set<MediaFile>();
+    public DbSet<UserLogin> UserLogins => Set<UserLogin>();
+    public DbSet<UserPasskey> UserPasskeys => Set<UserPasskey>();
 
     /// <summary>
     /// Alle Zeitpunkte sind UTC. SQLite speichert sie als Text ohne Zeitzone, EF liest sie als DateTimeKind.Unspecified –
@@ -241,7 +288,7 @@ public class AppDb(DbContextOptions<AppDb> options) : DbContext(options)
             ""CreatedById"" INTEGER NOT NULL, ""CreatedUtc"" TEXT NOT NULL, ""ExpiresUtc"" TEXT NOT NULL, ""UsedUtc"" TEXT NULL, ""UsedById"" INTEGER NULL)");
         Database.ExecuteSqlRaw(@"CREATE UNIQUE INDEX IF NOT EXISTS ""IX_Invites_TokenHash"" ON ""Invites"" (""TokenHash"")");
         foreach (var table in new[] { "Quizzes", "GameSessions", "DirectPolls" })
-            if (!HasColumn(table, "OwnerId")) Database.ExecuteSqlRaw($@"ALTER TABLE ""{table}"" ADD COLUMN ""OwnerId"" INTEGER NULL");
+            if (!HasColumn(table, "OwnerId")) SpalteAnlegen(table, "OwnerId", "INTEGER NULL");
         // Achtung: ExecuteSqlRaw deutet geschweifte Klammern als Platzhalter – daher Vorgabe '' (wird wie {} gelesen)
         if (!HasColumn("Users", "MusicJson")) Database.ExecuteSqlRaw(@"ALTER TABLE ""Users"" ADD COLUMN ""MusicJson"" TEXT NOT NULL DEFAULT ''");
         Database.ExecuteSqlRaw(@"CREATE TABLE IF NOT EXISTS ""MusicUploads"" (
@@ -264,7 +311,7 @@ public class AppDb(DbContextOptions<AppDb> options) : DbContext(options)
             ("Questions", "Notes", "TEXT NOT NULL DEFAULT ''"), ("Questions", "CorrectValue", "REAL NULL"), ("Questions", "Tolerance", "REAL NULL"),
             ("Questions", "Unit", "TEXT NOT NULL DEFAULT ''"), ("GameSessions", "StatsJson", "TEXT NOT NULL DEFAULT ''"),
             ("Users", "AiKeyProtected", "TEXT NULL") })
-            if (!HasColumn(table, col)) Database.ExecuteSqlRaw($@"ALTER TABLE ""{table}"" ADD COLUMN ""{col}"" {type}");
+            if (!HasColumn(table, col)) SpalteAnlegen(table, col, type);
         Database.ExecuteSqlRaw(@"CREATE UNIQUE INDEX IF NOT EXISTS ""IX_Quizzes_ShareToken"" ON ""Quizzes"" (""ShareToken"")");
         Database.ExecuteSqlRaw(@"CREATE UNIQUE INDEX IF NOT EXISTS ""IX_QuizFolders_Pin"" ON ""QuizFolders"" (""Pin"")");
         Database.ExecuteSqlRaw(@"CREATE TABLE IF NOT EXISTS ""DirectTemplates"" (
@@ -275,10 +322,41 @@ public class AppDb(DbContextOptions<AppDb> options) : DbContext(options)
             ""Id"" INTEGER NOT NULL CONSTRAINT ""PK_MediaFiles"" PRIMARY KEY AUTOINCREMENT,
             ""OwnerId"" INTEGER NOT NULL, ""StoredName"" TEXT NOT NULL, ""ContentType"" TEXT NOT NULL, ""Size"" INTEGER NOT NULL, ""CreatedUtc"" TEXT NOT NULL)");
         Database.ExecuteSqlRaw(@"CREATE UNIQUE INDEX IF NOT EXISTS ""IX_MediaFiles_StoredName"" ON ""MediaFiles"" (""StoredName"")");
+        // ASP.NET Core Identity: Stempel, Sperre, zweiter Faktor; Verknüpfungen (bisherige SsoId wird übernommen) und Passkeys
+        foreach (var (table, col, type) in new[] {
+            ("Users", "SecurityStamp", "TEXT NOT NULL DEFAULT ''"), ("Users", "AccessFailedCount", "INTEGER NOT NULL DEFAULT 0"),
+            ("Users", "LockoutEndUtc", "TEXT NULL"), ("Users", "TwoFactorEnabled", "INTEGER NOT NULL DEFAULT 0"),
+            ("Users", "AuthenticatorKeyProtected", "TEXT NULL"), ("Users", "RecoveryCodes", "TEXT NULL") })
+            if (!HasColumn(table, col)) SpalteAnlegen(table, col, type);
+        Database.ExecuteSqlRaw(@"UPDATE ""Users"" SET ""SecurityStamp"" = upper(hex(randomblob(16))) WHERE ""SecurityStamp"" = ''");
+        Database.ExecuteSqlRaw(@"CREATE TABLE IF NOT EXISTS ""UserLogins"" (
+            ""Id"" INTEGER NOT NULL CONSTRAINT ""PK_UserLogins"" PRIMARY KEY AUTOINCREMENT,
+            ""UserId"" INTEGER NOT NULL, ""Provider"" TEXT NOT NULL, ""ProviderKey"" TEXT NOT NULL, ""DisplayName"" TEXT NOT NULL, ""CreatedUtc"" TEXT NOT NULL,
+            CONSTRAINT ""FK_UserLogins_Users_UserId"" FOREIGN KEY (""UserId"") REFERENCES ""Users"" (""Id"") ON DELETE CASCADE)");
+        Database.ExecuteSqlRaw(@"CREATE UNIQUE INDEX IF NOT EXISTS ""IX_UserLogins_Provider_ProviderKey"" ON ""UserLogins"" (""Provider"", ""ProviderKey"")");
+        Database.ExecuteSqlRaw(@"CREATE INDEX IF NOT EXISTS ""IX_UserLogins_UserId"" ON ""UserLogins"" (""UserId"")");
+        Database.ExecuteSqlRaw(@"INSERT INTO ""UserLogins"" (""UserId"", ""Provider"", ""ProviderKey"", ""DisplayName"", ""CreatedUtc"")
+            SELECT u.""Id"", 'SAML', u.""SsoId"", 'Hochschulkennung', u.""CreatedUtc"" FROM ""Users"" u
+            WHERE u.""SsoId"" IS NOT NULL AND NOT EXISTS (SELECT 1 FROM ""UserLogins"" l WHERE l.""Provider"" = 'SAML' AND l.""ProviderKey"" = u.""SsoId"")");
+        Database.ExecuteSqlRaw(@"CREATE TABLE IF NOT EXISTS ""UserPasskeys"" (
+            ""Id"" INTEGER NOT NULL CONSTRAINT ""PK_UserPasskeys"" PRIMARY KEY AUTOINCREMENT,
+            ""UserId"" INTEGER NOT NULL, ""CredentialId"" BLOB NOT NULL, ""PublicKey"" BLOB NOT NULL, ""Name"" TEXT NOT NULL, ""CreatedUtc"" TEXT NOT NULL,
+            ""SignCount"" INTEGER NOT NULL, ""Transports"" TEXT NOT NULL, ""IsUserVerified"" INTEGER NOT NULL, ""IsBackupEligible"" INTEGER NOT NULL,
+            ""IsBackedUp"" INTEGER NOT NULL, ""AttestationObject"" BLOB NOT NULL, ""ClientDataJson"" BLOB NOT NULL,
+            CONSTRAINT ""FK_UserPasskeys_Users_UserId"" FOREIGN KEY (""UserId"") REFERENCES ""Users"" (""Id"") ON DELETE CASCADE)");
+        Database.ExecuteSqlRaw(@"CREATE UNIQUE INDEX IF NOT EXISTS ""IX_UserPasskeys_CredentialId"" ON ""UserPasskeys"" (""CredentialId"")");
+        Database.ExecuteSqlRaw(@"CREATE INDEX IF NOT EXISTS ""IX_UserPasskeys_UserId"" ON ""UserPasskeys"" (""UserId"")");
         // Papierkorb: nach 30 Tagen endgültig löschen (Fragen/Antworten per Fremdschlüssel-Kaskade)
         Database.ExecuteSqlRaw(@"DELETE FROM ""Quizzes"" WHERE ""DeletedUtc"" IS NOT NULL AND ""DeletedUtc"" < @p0", DateTime.UtcNow.AddDays(-30));
         // Umbenanntes Stück: gespeicherte Musikauswahl ("b:<datei>") nachziehen
         Database.ExecuteSqlRaw(@"UPDATE ""Users"" SET ""MusicJson"" = REPLACE(""MusicJson"", '""b:podium_gehoert_euch.mp3""', '""b:podium_gehoert_euch_liebler.mp3""') WHERE ""MusicJson"" LIKE '%b:podium_gehoert_euch.mp3%'");
+    }
+
+    /// <summary>Spalte ergänzen (Namen stammen nur aus diesem Code, nie aus Eingaben)</summary>
+    void SpalteAnlegen(string table, string column, string type)
+    {
+        var sql = "ALTER TABLE \"" + table + "\" ADD COLUMN \"" + column + "\" " + type;
+        Database.ExecuteSqlRaw(sql);
     }
 
     bool HasColumn(string table, string column)
@@ -293,6 +371,10 @@ public class AppDb(DbContextOptions<AppDb> options) : DbContext(options)
     protected override void OnModelCreating(ModelBuilder b)
     {
         b.Entity<User>().HasIndex(u => u.UserName).IsUnique();
+        b.Entity<UserLogin>().HasIndex(l => new { l.Provider, l.ProviderKey }).IsUnique();
+        b.Entity<UserLogin>().HasOne<User>().WithMany().HasForeignKey(l => l.UserId).OnDelete(DeleteBehavior.Cascade);
+        b.Entity<UserPasskey>().HasIndex(p => p.CredentialId).IsUnique();
+        b.Entity<UserPasskey>().HasOne<User>().WithMany().HasForeignKey(p => p.UserId).OnDelete(DeleteBehavior.Cascade);
         b.Entity<Invite>().HasIndex(i => i.TokenHash).IsUnique();
         b.Entity<MusicUpload>().HasIndex(m => m.OwnerId);
         b.Entity<QuizFolder>().HasIndex(f => f.OwnerId);

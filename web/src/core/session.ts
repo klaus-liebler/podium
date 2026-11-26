@@ -2,7 +2,19 @@
 // Alle URLs sind relativ, damit die App auch unter einem Unterpfad läuft (z. B. /podium/).
 import { html, nothing } from "lit";
 
-export interface Me { id: number; userName: string; displayName: string; isAdmin: boolean; sso: boolean; hasPassword: boolean; }
+export interface Me {
+	id: number; userName: string; displayName: string; isAdmin: boolean; sso: boolean; hasPassword: boolean;
+	/** Zweiter Faktor (Authenticator-App) eingerichtet; Pflicht für Admins */
+	twoFactor: boolean; recoveryCodesLeft: number; oidc: boolean;
+	passkeys: { id: string; name: string; createdUtc: string; backedUp: boolean }[];
+}
+
+/** Anmeldeverfahren dieser Instanz (Kacheln) */
+export interface Methods { saml: { name: string } | null; oidc: { name: string } | null; password: boolean; passkey: boolean; }
+export const methods = (): Promise<Methods> => api<Methods>("auth/methods").catch(() => ({ saml: null, oidc: null, password: true, passkey: false }));
+
+/** Antwort der ersten Anmeldestufe: Konto oder „zweiter Faktor nötig“ */
+export type LoginResult = Me | { twoFactor: "code" | "setup" };
 
 /** Hochschul-Login (SAML) eingerichtet? */
 export const ssoEnabled = (): Promise<boolean> => api<{ enabled: boolean }>("auth/saml").then(r => r.enabled).catch(() => false);
@@ -22,7 +34,7 @@ export async function api<T = unknown>(path: string, init: RequestInit & { json?
 		headers: { ...(json !== undefined ? { "Content-Type": "application/json" } : {}), ...(rest.headers ?? {}) },
 		body: json !== undefined ? JSON.stringify(json) : rest.body,
 	});
-	if (r.status === 401 && !path.startsWith("auth/login") && !path.startsWith("auth/setup") && !path.startsWith("auth/saml") && !path.startsWith("invite/")) {
+	if (r.status === 401 && !["auth/login", "auth/setup", "auth/saml", "auth/2fa", "auth/passkey/", "auth/methods", "invite/"].some(p => path.startsWith(p))) {
 		me = null;
 		toLogin();
 		throw new ApiError(401, "Bitte anmelden.");

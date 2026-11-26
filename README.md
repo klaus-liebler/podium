@@ -112,10 +112,27 @@ Entwicklung mit Hot-Reload: Backend per `dotnet run` starten, dann `cd web; npm 
 
 ## Anmeldung
 
-Dozierende melden sich mit eigenem Konto an (PBKDF2-Hash, Cookie, Sperre nach Fehlversuchen); jede·r sieht nur die eigenen
-Quizze. Solange die Datenbank kein Konto enthält, zeigt die Anmeldeseite die **Ersteinrichtung**: Dort legt man
-einmalig das Admin-Konto an (kein Passwort in Konfiguration oder Log). Weitere Konten per **Einladungslink** (👥 Benutzer), Passwort vergessen
-per **Passwort-Link**. Studierende brauchen keine Anmeldung.
+Dozierende melden sich mit eigenem Konto an; jede·r sieht nur die eigenen Quizze. Grundlage ist **ASP.NET Core Identity** über das
+vorhandene Kontomodell (`Auth/Identity.cs`): Passwort-Hashes im bisherigen Format (PBKDF2-SHA256), Sperre nach 5 Fehlversuchen für
+15 Minuten, Sicherheitsstempel (Passwortwechsel, Admin-Recht, Deaktivieren oder zweiter Faktor beenden alle Sitzungen), **zweiter Faktor**
+per Authenticator-App (TOTP, mit Wiederherstellungscodes; **Pflicht für Admins**) und **Passkeys**. Solange die Datenbank kein Konto
+enthält, zeigt die Anmeldeseite die **Ersteinrichtung**: Dort legt man einmalig das Admin-Konto an (kein Passwort in Konfiguration oder Log)
+und richtet gleich den zweiten Faktor ein. Weitere Konten per **Einladungslink** (👥 Benutzer), Passwort vergessen per **Passwort-Link**,
+Telefon verloren per „2FA zurücksetzen“. Studierende brauchen keine Anmeldung.
+
+Die Verfahren erscheinen als Kacheln auf der Anmeldeseite und sind je Instanz schaltbar:
+
+| Einstellung (Umgebung) | Bedeutung |
+|---|---|
+| `Anmeldung__Verfahren` | `Saml,Oidc,Passwort,Passkey` (Auswahl); leer = Passwort und Passkey, dazu SAML bzw. OIDC, sobald konfiguriert |
+| `Saml__IdpEntityId` | Hochschul-Login (Shibboleth) wie bisher: SP-Metadaten unter `…/Saml2`, ACS `…/Saml2/Acs`, Zertifikat `schluessel/saml-sp.pfx` |
+| `Oidc__Authority`, `Oidc__ClientId`, `Oidc__ClientSecret` | optional OpenID Connect (Code-Flow mit PKCE); Rückruf `…/signin-oidc`; Konten nur verknüpfen, kein automatisches Anlegen |
+| `Anmeldung__MfaBeiSsoVerlangen` | Standard `true`: Admins brauchen bei SSO einen MFA-Nachweis des IdP (REFEDS-MFA bzw. `amr`), sonst fragt Podium den eigenen Code ab |
+| `Anmeldung__SperreNachFehlversuchen`, `Anmeldung__SperreMinuten` | Sperre nach Fehlversuchen (Standard 5 / 15) |
+
+Hochschul-Login: Konten werden wie bisher über die dauerhafte Kennung (subject-id, sonst pairwise-id, sonst eppn) gefunden – die frühere
+Spalte `SsoId` übernimmt die Aufwertung in die Verknüpfungen (`UserLogins`) und bleibt gefüllt. Neue Mitarbeitende bekommen beim
+ersten Login automatisch ein Konto (wie bisher, nur mit passender `eduPersonScopedAffiliation`).
 
 Betrieb unter einem Unterpfad: `PathBase=/podium`, `PublicBaseUrl=https://…/podium`. Server-Bereitstellung: [deploy/README.md](deploy/README.md).
 
