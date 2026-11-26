@@ -21,9 +21,9 @@
   <!-- Oberflächen-Quellen (Vite/Lit, inkl. node_modules) und Deploy-Kit gehören nicht ins .NET-Projekt;
        ausgeliefert wird nur das Build-Ergebnis in wwwroot. -->
   <ItemGroup>
-    <Compile Remove="web/**;deploy/**" />
-    <Content Remove="web/**;deploy/**" />
-    <None Remove="web/**;deploy/**" />
+    <Compile Remove="web/**;deploy/**;tests/**" />
+    <Content Remove="web/**;deploy/**;tests/**" />
+    <None Remove="web/**;deploy/**;tests/**" />
     <Content Remove="*.db;*.db-*" />
   </ItemGroup>
 
